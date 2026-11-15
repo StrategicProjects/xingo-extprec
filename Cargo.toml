@@ -1,0 +1,63 @@
+# xingo-extprec (PLAN.md trilha L2, D-0081 and D-0109): publishable on its
+# own, with its own version; its only runtime dependency is `xingo-sparse`
+# (optional, feature `sparse`). As in `xingo-sparse`, nothing is inherited
+# from the workspace (`*.workspace = true`), so that this directory also
+# builds alone. The values must stay equal to the workspace's.
+#
+# `publish = false` until the crate is complete (L2.2b: SIMD kernels and
+# `DdDense`; L2.3: `Interval` and `verify`).
+[package]
+name = "xingo-extprec"
+version = "0.1.0-dev"
+description = "Extended precision for numerical linear algebra: double-double arithmetic with proven error bounds, compensated kernels and rigorous interval enclosures of residuals"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/StrategicProjects/xingo"
+keywords = ["double-double", "interval", "extended-precision", "verified", "linear-algebra"]
+categories = ["mathematics", "science", "algorithms"]
+publish = false
+
+[features]
+default = ["sparse"]
+# `Real` for `DoubleDouble` over the containers and factorizations of
+# `xingo-sparse` (question E1 of the chapter: the dependency points from
+# here to `xingo-sparse`). Off: the scalar type and the slice kernels only.
+sparse = ["dep:xingo-sparse"]
+# Reserved for the SIMD kernels through `pulp` (L2.2b). Empty today: the
+# kernels are the scalar reference ones, whose results the SIMD versions
+# must reproduce bit for bit (invariant K1).
+simd = []
+
+[dependencies]
+xingo-sparse = { path = "../sparse", version = "0.3.2", default-features = false, optional = true }
+
+[dev-dependencies]
+proptest = "1.6"
+# The exact oracle of the tests (D-0109, E8): arbitrary-precision rationals,
+# MIT OR Apache-2.0 (checked for 0.6.1). `malachite` is LGPL and forbidden.
+dashu-ratio = { version = "0.6.1", default-features = false, features = ["std"] }
+dashu-int = { version = "0.6.1", default-features = false, features = ["std"] }
+
+# The integration test instantiates the factorizations of `xingo-sparse` in
+# `DoubleDouble`.
+[[test]]
+name = "sparse_dd"
+required-features = ["sparse"]
+
+# The workspace's lints, spelled out (see the header comment).
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Mathematical notation is kept (PLAN.md §2.3): allowed per module when declared.
+many_single_char_names = "allow"
+similar_names = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+doc_markdown = "allow"
