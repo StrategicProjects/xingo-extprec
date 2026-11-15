@@ -113,6 +113,21 @@
 //! operation ([`DoubleDouble::ERROR_BOUNDS`]) and L2.2 is accepted against
 //! *those* (question E6).
 //!
+//! **Why not DWDivDW3.** It was implemented and measured (2026-11-15), and
+//! the owner kept DWDivDW2. DWDivDW3 computes `x · (1/y)`, and a rounded
+//! reciprocal loses the *exact* quotients: `53/53` came out as `1 −
+//! 6,2 · 10⁻³³`; of the 39 601 quotients `(q y)/y` with integers `1 ≤ q, y
+//! < 200`, 4 600 were not `q`; `(a b)/b ≠ a` for about 30 % of random
+//! `f64` pairs and `x/x ≠ 1` for 45 % of random double-doubles. DWDivDW2,
+//! which corrects the `f64` quotient with an exact residual, returns all
+//! of these exactly (Chapter 11.2; the tests pin it). The average error
+//! was also larger (`0,32u²` against `0,12u²` on `f64`-valued operands,
+//! `0,56u²` against `0,48u²` on general ones; the largest observed,
+//! `4,4u²` against `5,1u²`, is the only figure in its favour), and the
+//! scaled residual of `Lu<DoubleDouble>` rose from about `1,5` to `74`
+//! units of `n ε` (order 300). A better worst-case bound did not pay for
+//! that.
+//!
 //! **Intervals without the rounding mode.** Rust offers no sound way to
 //! change the floating-point rounding mode (LLVM assumes round-to-nearest;
 //! `fesetround` through FFI is undefined behaviour in the presence of
@@ -252,8 +267,8 @@
 //!   formalized the proofs in Coq and improved JMP's `5u²`.
 //! * `dd / dd`: DWDivDW2 costs 18 flops, not 31; 31 flops and `9,8u²` are
 //!   DWDivDW3's. The contract's remark "a cheaper variant is `9,8u²`" was
-//!   backwards: the *more expensive* algorithm has the better bound.
-//!   Whether to switch to it is an open question for the owner.
+//!   backwards: the *more expensive* algorithm has the better bound. The
+//!   division stays DWDivDW2 (see "Why not DWDivDW3" above).
 //! * `√dd`: the algorithm is SQRTDWtoDW of LLMPR; its constant `25/8`
 //!   could not be checked against the paper (not accessible). A
 //!   first-order analysis reproduces exactly `25/8` (Chapter 11.2), and
@@ -274,12 +289,17 @@
 //! * `Display`: "the shortest of at most 32 significant digits that parses
 //!   back to the same value" does not exist in general — a double-double
 //!   is not a 106-bit number (its trailing component may lie arbitrarily
-//!   far below the leading one), and even 106 contiguous bits need 33
-//!   digits. The default output is the value correctly rounded to 32
-//!   digits; it parses back exactly when the value has at most 32 decimal
-//!   digits, and `{:.N}` with `N` large gives the exact expansion (Chapter
-//!   11.4, invariant P3). Both conversions are correctly rounded, which is
-//!   stronger than the "faithful" of question E7.
+//!   far below the leading one). The default output is the value correctly
+//!   rounded to **31** digits (the owner's choice, 2026-11-15, instead of
+//!   the contract's 32): a decimal of at most 31 digits that was read
+//!   comes back as the same text, which 32 digits cannot give (`10³¹ <
+//!   2¹⁰⁶ < 10³²`). `{:.N}` and `{:.Ne}` with `N` large give the exact
+//!   expansion (Chapter 11.4, invariant P3). All conversions are correctly
+//!   rounded, which is stronger than the "faithful" of question E7.
+//! * Added to the contract's surface, ratified by the owner: `impl
+//!   LowerExp for DoubleDouble` (`{:e}`, as for `f64`), `impl Display` and
+//!   `impl Error` for [`ParseDoubleDoubleError`], and the row `"dd²"` of
+//!   `ERROR_BOUNDS`.
 //!
 //! ## Plan
 //! L2.2a (this state): EFTs, `DoubleDouble`, `impl Real`, scalar kernels,

@@ -1,9 +1,9 @@
 //! # Chapter 11.4 — Decimal formatting and parsing
 //!
 //! ## Purpose
-//! `Display` and `FromStr` for [`DoubleDouble`]. The contract asks for
-//! *faithful* conversions (question E7: an error of at most one unit of the
-//! 32nd digit). Both are in fact **correctly rounded**: they are computed
+//! `Display`, `LowerExp` and `FromStr` for [`DoubleDouble`]. The contract
+//! asks for *faithful* conversions (question E7: an error of at most one
+//! unit of the 32nd digit). Both are in fact **correctly rounded**: they are computed
 //! in exact integer arithmetic (Chapter 11.3), which is simpler to state
 //! and to test than a conversion carried out in double-double arithmetic
 //! itself, whose error would have to be bounded.
@@ -36,10 +36,12 @@
 //! O1. \[Special.\] NaN is `NaN`, the infinities `inf` and `-inf`, zero `0`
 //!     (`-0` for the negative zero).
 //! O2. \[Expand.\] Algorithm X gives the digits and `e`.
-//! O3. \[Notation.\] *Fixed* if `−5 ≤ e ≤ 31`, else *scientific*
-//!     (`d₁.d₂…e±k`, as Rust writes `{:e}`). With a precision the choice
-//!     uses the `e` of the exact value; without, that of the rounded one.
-//! O4. \[Round.\] Without a precision: to 32 significant digits, half to
+//! O3. \[Notation.\] For `{}`: *fixed* if `−5 ≤ e ≤ 31`, else *scientific*
+//!     (`d₁.d₂…e±k`, as Rust writes `{:e}` for an `f64`: no `+`, no
+//!     leading zero in the exponent). With a precision the choice uses the
+//!     `e` of the exact value; without, that of the rounded one. For
+//!     `{:e}`: always scientific (zero is `0e0`).
+//! O4. \[Round.\] Without a precision: to 31 significant digits, half to
 //!     even, trailing zeros dropped. With precision `N`: to `N` digits
 //!     after the point of the chosen notation, zero-padded.
 //! O5. \[Pad.\] Sign, width, fill and `+` as for the integers of `core`.
@@ -81,14 +83,22 @@
 //!      h)` themselves, except when `ℓ` is subnormal and was rounded to
 //!      exactly half an ulp of an odd `h` (then normalizing moves the tie
 //!      to the even neighbour; the value is the same).
-//! (P3) *Round trip.* By (P1) and (P2) `x.to_string().parse()` is `x`
-//!      whenever `x` has at most 32 significant decimal digits, and
-//!      `format!("{x:.1100}").parse()` is `x` for every finite `x`. In
-//!      general the default output is `x` to 32 digits and does **not**
-//!      parse back to the same bits: a double-double is not a 106-bit
-//!      number — `ℓ` may lie arbitrarily far below `h` (`1 + 2⁻⁹⁰⁰` is one)
-//!      — so no fixed number of digits identifies it (a divergence from the
-//!      contract's wording, reported in Chapter 11).
+//! (P3) *Round trip.* Two statements, both consequences of (P1) and (P2).
+//!      *Text.* A decimal `v` of at most 31 significant digits with `|v| ≥
+//!      2⁻⁹⁶⁸` (below, the trailing component is subnormal and short),
+//!      read by `from_str` and written with `{}` or `{:e}`, comes back as
+//!      the same decimal: the double-double read is within `2⁻¹⁰⁶ |v| <
+//!      1,24 · 10⁻³² |v|` of `v`, less than half a unit of the 31st digit
+//!      (`≥ 5 · 10⁻³² |v|`). This is why the default is 31 digits and not
+//!      32 (`10³¹ < 2¹⁰⁶ < 10³²`): with 32 a short decimal can come back
+//!      as `…29799999999999e74`. *Value.* `x.to_string().parse()` is `x`
+//!      whenever `x` has at most 31 significant decimal digits, and
+//!      `format!("{x:.1100e}").parse()` is `x` for every finite `x`. In
+//!      general the default output does **not** parse back to the same
+//!      bits: a double-double is not a 106-bit number — `ℓ` may lie
+//!      arbitrarily far below `h` (`1 + 2⁻⁹⁰⁰` is one) — so no fixed number
+//!      of digits identifies it (a divergence from the contract's wording,
+//!      reported in Chapter 11).
 //!
 //! ## References
 //! Knuth, TAOCP vol. 2, §4.4 (radix conversion). Clinger, "How to read
@@ -105,7 +115,7 @@ use crate::big::Nat;
 use crate::dd::DoubleDouble;
 
 /// Significant digits of the default output (step O4).
-const DEFAULT_DIGITS: i64 = 32;
+const DEFAULT_DIGITS: i64 = 31;
 /// The exponents `e` written in fixed notation (step O3).
 const FIXED_RANGE: core::ops::RangeInclusive<i32> = -5..=31;
 /// Step I2: decimal magnitudes beyond these are `∞` and `0`.
@@ -276,51 +286,78 @@ fn scientific(digits: &[u8], e: i32, frac: Option<usize>) -> String {
     out
 }
 
-/// Decimal, scientific notation when the exponent calls for it; `{:.N}`
-/// gives `N` digits after the point, the default is the value correctly
-/// rounded to 32 significant digits, trailing zeros dropped (Algorithm O
-/// of Chapter 11.4; the output parses back to the same value whenever the
-/// value has at most 32 significant decimal digits — see invariant P3 for
-/// why no fixed number of digits can do so in general).
-impl fmt::Display for DoubleDouble {
-    #[allow(clippy::float_cmp)] // the zero test is exact
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let negative = self.hi().is_sign_negative();
-        // O1. `pad_integral` and not `pad`: a precision must not truncate.
-        if self.is_nan() {
-            return f.pad_integral(true, "", "NaN");
-        }
-        if !self.is_finite() {
-            return f.pad_integral(!negative, "", "inf");
-        }
-        let precision = f.precision();
-        let body = if self.hi() == 0.0 {
-            fixed(&[], 0, precision)
+/// Algorithm O. `always_scientific` is the `{:e}` of step O3.
+#[allow(clippy::float_cmp)] // the zero test is exact
+fn write_decimal(
+    x: DoubleDouble,
+    f: &mut fmt::Formatter<'_>,
+    always_scientific: bool,
+) -> fmt::Result {
+    let negative = x.hi().is_sign_negative();
+    // O1. `pad_integral` and not `pad`: a precision must not truncate.
+    if x.is_nan() {
+        return f.pad_integral(true, "", "NaN");
+    }
+    if !x.is_finite() {
+        return f.pad_integral(!negative, "", "inf");
+    }
+    let precision = f.precision();
+    let body = if x.hi() == 0.0 {
+        if always_scientific {
+            scientific(&[0], 0, precision)
         } else {
-            let (mut digits, mut e) = exact_expansion(*self); // O2
-            match precision {
-                None => {
-                    round_digits(&mut digits, &mut e, DEFAULT_DIGITS); // O4
-                    if FIXED_RANGE.contains(&e) {
-                        fixed(&digits, e, None) // O3
-                    } else {
-                        scientific(&digits, e, None)
-                    }
-                }
-                Some(n) => {
-                    let n_i64 = i64::try_from(n).unwrap_or(i64::MAX);
-                    if FIXED_RANGE.contains(&e) {
-                        let keep = n_i64.saturating_add(i64::from(e) + 1);
-                        round_digits(&mut digits, &mut e, keep);
-                        fixed(&digits, e, Some(n))
-                    } else {
-                        round_digits(&mut digits, &mut e, n_i64.saturating_add(1));
-                        scientific(&digits, e, Some(n))
-                    }
+            fixed(&[], 0, precision)
+        }
+    } else {
+        let (mut digits, mut e) = exact_expansion(x); // O2
+        let is_fixed = |e: i32| !always_scientific && FIXED_RANGE.contains(&e); // O3
+        match precision {
+            None => {
+                round_digits(&mut digits, &mut e, DEFAULT_DIGITS); // O4
+                if is_fixed(e) {
+                    fixed(&digits, e, None)
+                } else {
+                    scientific(&digits, e, None)
                 }
             }
-        };
-        f.pad_integral(!negative, "", &body) // O5
+            Some(n) => {
+                let n_i64 = i64::try_from(n).unwrap_or(i64::MAX);
+                if is_fixed(e) {
+                    let keep = n_i64.saturating_add(i64::from(e) + 1);
+                    round_digits(&mut digits, &mut e, keep);
+                    fixed(&digits, e, Some(n))
+                } else {
+                    round_digits(&mut digits, &mut e, n_i64.saturating_add(1));
+                    scientific(&digits, e, Some(n))
+                }
+            }
+        }
+    };
+    f.pad_integral(!negative, "", &body) // O5
+}
+
+/// Decimal, scientific notation when the exponent calls for it; `{:.N}`
+/// gives `N` digits after the point, the default is the value correctly
+/// rounded to 31 significant digits, trailing zeros dropped (Algorithm O
+/// of Chapter 11.4). A decimal of at most 31 digits that was read by
+/// `from_str` is written back as the same decimal; the output parses back
+/// to the same *bits* whenever the value has at most 31 significant
+/// decimal digits — see invariant P3 for why no fixed number of digits can
+/// do so in general (`{:.1100e}` always does).
+impl fmt::Display for DoubleDouble {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_decimal(*self, f, false)
+    }
+}
+
+/// Scientific notation as for `f64`: `d.ddd` then `e` and the decimal
+/// exponent, without `+` or leading zeros (`1.5e-7`, `1e0`, `0e0`).
+/// `{:e}` gives the value correctly rounded to the 31 significant digits
+/// of `Display`, trailing zeros dropped; `{:.Ne}` gives `N` digits after
+/// the point, correctly rounded (half to even), zero-padded.
+impl fmt::LowerExp for DoubleDouble {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_decimal(*self, f, true)
     }
 }
 
@@ -566,17 +603,17 @@ mod tests {
     #[test]
     fn displays_thirty_two_digits() {
         let third = Dd::ONE / 3.0;
-        assert_eq!(third.to_string(), "0.33333333333333333333333333333333");
+        assert_eq!(third.to_string(), "0.3333333333333333333333333333333");
         // The f64 nearest to 0.1 is not 0.1.
         assert_eq!(
             Dd::from_f64(0.1).to_string(),
-            "0.1000000000000000055511151231257827"[..34].to_string()
+            "0.1000000000000000055511151231258"
         );
         assert_eq!(
             Dd::from_f64(2.0).sqrt().to_string(),
-            "1.4142135623730950488016887242097"
+            "1.41421356237309504880168872421"
         );
-        // 1 + 2^-900 is 1 to 32 digits (invariant P3).
+        // 1 + 2^-900 is 1 to 31 digits (invariant P3).
         let x = Dd::ONE + 2f64.powi(-900);
         assert_eq!(x.to_string(), "1");
         assert_ne!(parse(&x.to_string()), x);
@@ -621,6 +658,77 @@ mod tests {
         assert_eq!(format!("{:.0}", parse("9.5e40")), "1e41");
         assert_eq!(format!("{:.3}", parse("1e-7")), "1.000e-7");
         assert_eq!(format!("{third:.40}").len(), 42);
+    }
+
+    #[test]
+    fn lower_exp_follows_f64() {
+        // The same strings as f64. Without a precision f64 writes the
+        // shortest digits that identify the f64, we write the value: they
+        // agree when the value has few digits.
+        for x in [
+            1.0,
+            -1.5,
+            0.0,
+            -0.0,
+            1024.0,
+            0.001_953_125,
+            1e15,
+            2f64.powi(-20),
+        ] {
+            assert_eq!(format!("{:e}", Dd::from_f64(x)), format!("{x:e}"));
+            assert_eq!(format!("{:12e}|", Dd::from_f64(x)), format!("{x:12e}|"));
+            assert_eq!(format!("{:+e}", Dd::from_f64(x)), format!("{x:+e}"));
+        }
+        // With a precision both are the exact value correctly rounded.
+        for x in [
+            1.0,
+            -1.5,
+            0.0,
+            -0.0,
+            0.1,
+            2.5e-7,
+            6.25e100,
+            0.125,
+            9.5,
+            f64::MAX,
+            5e-324,
+        ] {
+            assert_eq!(format!("{:.3e}", Dd::from_f64(x)), format!("{x:.3e}"));
+            assert_eq!(format!("{:+.0e}", Dd::from_f64(x)), format!("{x:+.0e}"));
+            assert_eq!(
+                format!("{:<12.1e}|", Dd::from_f64(x)),
+                format!("{x:<12.1e}|")
+            );
+            assert_eq!(format!("{:012.2e}", Dd::from_f64(x)), format!("{x:012.2e}"));
+            assert_eq!(format!("{:.25e}", Dd::from_f64(x)), format!("{x:.25e}"));
+        }
+        assert_eq!(format!("{:e}", Dd::NAN), "NaN");
+        assert_eq!(format!("{:e}", Dd::INFINITY), "inf");
+        assert_eq!(format!("{:.2e}", -Dd::INFINITY), "-inf");
+        // 31 digits without a precision, trailing zeros dropped.
+        let third = Dd::ONE / 3.0;
+        assert_eq!(format!("{third:e}"), "3.333333333333333333333333333333e-1");
+        assert_eq!(format!("{:e}", parse("1e31")), "1e31");
+        assert_eq!(format!("{:e}", parse("123.5")), "1.235e2");
+        // With a precision: digits after the point, half to even, carries.
+        assert_eq!(format!("{third:.5e}"), "3.33333e-1");
+        assert_eq!(format!("{:.0e}", Dd::from_f64(2.5)), "2e0");
+        assert_eq!(format!("{:.0e}", Dd::from_f64(3.5)), "4e0");
+        assert_eq!(format!("{:.1e}", Dd::from_f64(9.96)), "1.0e1");
+        assert_eq!(format!("{:.2e}", parse("9.995e-10")), "9.99e-10"); // below the tie in dd
+        assert_eq!(format!("{:.3e}", Dd::ZERO), "0.000e0");
+        assert_eq!(format!("{third:.40e}").len(), 2 + 40 + 3);
+        // Round trips.
+        for s in [
+            "1e0",
+            "-2.5e-7",
+            "1.2345678901234567890123456789e-200",
+            "9.99e307",
+        ] {
+            assert_eq!(format!("{:e}", parse(s)), s);
+        }
+        let x = Dd::ONE + 2f64.powi(-900);
+        assert_eq!(parse(&format!("{x:.1100e}")), x);
     }
 
     #[test]
@@ -682,7 +790,7 @@ mod tests {
         let pi = parse("3.141592653589793238462643383279502884197");
         assert_eq!(pi.hi().to_bits(), core::f64::consts::PI.to_bits());
         assert_eq!(pi.lo(), 1.224_646_799_147_353_2e-16);
-        assert_eq!(pi.to_string(), "3.1415926535897932384626433832795");
+        assert_eq!(pi.to_string(), "3.14159265358979323846264338328");
     }
 
     #[test]

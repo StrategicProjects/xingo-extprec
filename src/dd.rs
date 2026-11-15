@@ -71,6 +71,15 @@
 //! 2. `π_h ← RN(x_h − r_h)`; `δ_ℓ ← RN(x_ℓ − r_ℓ)`; `δ ← RN(π_h + δ_ℓ)`.
 //! 3. `t_ℓ ← RN(δ / y_h)`; `(z_h, z_ℓ) ← Fast2Sum(t_h, t_ℓ)`.
 //!
+//! D2 keeps exact quotients exact: when `x / y` is an `f64` `q` (in
+//! particular `x/x = 1`, `(q y)/y = q`, and `(a b)/b = a` for `x` the
+//! exact product of two `f64`), `t_h` is `q` or a neighbour of it, the
+//! residual `x − y t_h` is formed without error and `t_ℓ` is exactly `q −
+//! t_h`. A division through a reciprocal (DWDivDW3, JMP Algorithm 18:
+//! bound `9,8u²`, 31 flops) does not have this property, which is why it
+//! is not used here (Chapter 11, "Why not DWDivDW3"). The property is
+//! tested, not proven, for the cases named.
+//!
 //! **Algorithm R (`√dd`; SQRTDWtoDW, LLMPR Algorithm 8).** For `x > 0`.
 //!
 //! 1. `s_h ← RN(√x_h)`.
@@ -725,6 +734,9 @@ mod tests {
         assert_eq!(third.hi(), 1.0 / 3.0);
         assert_eq!(third.lo(), (1.0 / 3.0) * U / 2.0);
         assert_eq!(Dd::ONE / Dd::from_f64(3.0), third);
+        // Exact quotients stay exact (the reason for Algorithm D2).
+        assert_eq!(Dd::from_f64(53.0) / Dd::from_f64(53.0), Dd::ONE);
+        assert_eq!(third / third, Dd::ONE);
         // √2 squared is 2 to the last bit of 106.
         let r = Dd::from_f64(2.0).sqrt();
         let err = (r.square() - 2.0).abs();

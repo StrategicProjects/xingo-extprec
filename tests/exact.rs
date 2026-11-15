@@ -383,6 +383,20 @@ proptest! {
         prop_assert!(within(r, &(RBig::from(1) / qd(y)), "dd / dd"), "1 / {y:?} = {r:?}");
     }
 
+    /// Exact quotients stay exact (Chapter 11.2, after Algorithm D2):
+    /// `(a b)/b = a` for the exact product of two `f64`, and `x/x = 1`.
+    #[test]
+    fn div_dd_keeps_exact_quotients(a in normal(-300, 300), b in normal(-300, 300), x in safe_dd()) {
+        let z = Dd::from_product(a, b) / Dd::from_f64(b);
+        prop_assert_eq!(z, Dd::from_f64(a), "({:e} · {:e}) / second", a, b);
+        let z = Dd::from_product(a, b) / Dd::from_f64(a);
+        prop_assert_eq!(z, Dd::from_f64(b), "({:e} · {:e}) / first", a, b);
+        if x.hi() != 0.0 {
+            prop_assert_eq!(x / x, Dd::ONE, "{:?} / itself", x);
+            prop_assert_eq!(x / -x, -Dd::ONE, "{:?} / its negation", x);
+        }
+    }
+
     #[test]
     fn div_f64_within_bound(x in safe_dd(), y in normal(-300, 300)) {
         let z = x / y;
@@ -577,27 +591,70 @@ proptest! {
         prop_assert_eq!((back.hi().to_bits(), back.lo().to_bits() << 1), (x.hi().to_bits(), x.lo().to_bits() << 1), "{}", s);
     }
 
-    /// (P1): the default output is the value correctly rounded to at most
-    /// 32 significant digits, and parses back to within that rounding.
+    /// (P1): the default output of `{}` and of `{:e}` is the value
+    /// correctly rounded to at most 31 significant digits.
     #[test]
-    fn default_output_has_32_correct_digits(x in finite_dd()) {
+    fn default_output_has_31_correct_digits(x in finite_dd()) {
         prop_assume!(x.hi() != 0.0);
-        let s = x.to_string();
-        let digits = s.split('e').next().expect("a mantissa")
-            .trim_start_matches(['-', '0', '.']).replace('.', "");
-        prop_assert!(digits.len() <= 32, "{}", s);
-        prop_assert!(!s.contains('e') || !digits.ends_with('0'), "{}", s);
-        let (v, _) = decimal(&s);
         let exact = qd(x);
-        // Half a unit of the 32nd significant digit of x.
-        let half_unit = abs(exact.clone()) * pow10(-31) / RBig::from(2);
-        prop_assert!(abs(v.clone() - exact.clone()) <= half_unit, "{}", s);
-        // Short values come back exactly (P3).
-        let back: Dd = s.parse().expect("its own output");
-        invariants(back)?;
-        if v == exact {
-            prop_assert_eq!(back, x, "{}", s);
+        // Half a unit of the 31st significant digit of x.
+        let half_unit = abs(exact.clone()) * pow10(-30) / RBig::from(2);
+        for s in [x.to_string(), format!("{x:e}")] {
+            let digits = s.split('e').next().expect("a mantissa").replace(['-', '.'], "");
+            let significant = digits.trim_start_matches('0').trim_end_matches('0');
+            prop_assert!(significant.len() <= 31, "{}", s);
+            prop_assert!(!s.contains('e') || !digits.ends_with('0') || digits.len() == 1, "{}", s);
+            let (v, _) = decimal(&s);
+            prop_assert!(abs(v.clone() - exact.clone()) <= half_unit, "{}", s);
+            // Short values come back exactly (P3).
+            let back: Dd = s.parse().expect("its own output");
+            invariants(back)?;
+            if v == exact {
+                prop_assert_eq!(back, x, "{}", s);
+            }
         }
+        // `{:e}` is always scientific, with the digits of `{}`.
+        let (a, b) = (decimal(&x.to_string()).0, decimal(&format!("{x:e}")).0);
+        prop_assert_eq!(a, b);
+        let scientific = format!("{x:e}");
+        prop_assert!(scientific.contains('e'), "{}", scientific);
+    }
+
+    /// (P3), text: a decimal of at most 31 digits, read and written back
+    /// with `{}` or `{:e}`, is the same decimal — and the output is a fixed
+    /// point of read-then-write.
+    #[test]
+    fn decimals_of_31_digits_round_trip_as_text(
+        digits in prop::collection::vec(0_u8..10, 1..=31),
+        e in -250_i32..250,
+        neg in any::<bool>(),
+    ) {
+        let body: String = digits.iter().map(|d| char::from(b'0' + d)).collect();
+        let literal = format!("{}{body}e{e}", if neg { "-" } else { "" });
+        let (want, _) = decimal(&literal);
+        let x: Dd = literal.parse().expect("a literal");
+        for s in [x.to_string(), format!("{x:e}")] {
+            prop_assert_eq!(&decimal(&s).0, &want, "{} -> {}", literal, s);
+            let again: Dd = s.parse().expect("its own output");
+            prop_assert_eq!(again, x, "{} -> {}", literal, s);
+        }
+        prop_assert_eq!(format!("{:e}", format!("{x:e}").parse::<Dd>().expect("its own output")), format!("{x:e}"));
+        prop_assert_eq!(x.to_string().parse::<Dd>().expect("its own output").to_string(), x.to_string());
+    }
+
+    /// `{:.Ne}`: `N` digits after the point, half a unit of the last one;
+    /// with enough digits the output is the value and parses back to it.
+    #[test]
+    fn lower_exp_with_precision_is_correctly_rounded(x in finite_dd(), n in 0_usize..60) {
+        let s = format!("{x:.n$e}");
+        let (mantissa, _) = s.split_once('e').expect("scientific");
+        prop_assert_eq!(mantissa.split_once('.').map_or(0, |p| p.1.len()), n, "{}", s);
+        prop_assert_eq!(mantissa.trim_start_matches('-').split('.').next().map(str::len), Some(1), "{}", s);
+        let (v, last) = decimal(&s);
+        prop_assert!(abs(v - qd_or_zero(x)) * RBig::from(2) <= pow10(last), "{}", s);
+        let exact = format!("{x:.1100e}");
+        let back: Dd = exact.parse().expect("its own output");
+        prop_assert_eq!((back.hi().to_bits(), back.lo().to_bits() << 1), (x.hi().to_bits(), x.lo().to_bits() << 1), "{}", exact);
     }
 
     /// (P1) with a precision: half a unit of the last digit written.
@@ -610,7 +667,7 @@ proptest! {
         prop_assert_eq!(frac, n, "{}", s);
     }
 
-    /// (P3): a value with at most 32 significant decimal digits (here a
+    /// (P3): a value with at most 31 significant decimal digits (here a
     /// small dyadic rational) is written exactly and read back exactly.
     #[test]
     fn short_values_round_trip(k in 1_u32..65_536, j in -20_i32..=60, neg in any::<bool>()) {
@@ -801,6 +858,28 @@ fn dw_plus_fp_worst_case_of_the_literature() {
     let err = error_in_u2(z, &exact);
     assert!(err > 1.999 && err < 2.0, "{err}");
     assert!(within(z, &exact, "dd + f64"));
+}
+
+/// The exact integer quotients `(q y)/y = q` on a grid: the property that
+/// decided for DWDivDW2 against a division through a reciprocal (Chapter
+/// 11, "Why not DWDivDW3").
+#[test]
+fn exact_integer_quotients() {
+    for q in 1..200_u32 {
+        for y in 1..200_u32 {
+            let (fq, fy) = (f64::from(q), f64::from(y));
+            assert_eq!(
+                Dd::from_f64(fq * fy) / Dd::from_f64(fy),
+                Dd::from_f64(fq),
+                "{q} · {y} / {y}"
+            );
+            assert_eq!(
+                Dd::from_f64(-fq * fy) / Dd::from_f64(fy),
+                Dd::from_f64(-fq),
+                "−{q} · {y} / {y}"
+            );
+        }
+    }
 }
 
 // ---------------------------------------------------------------------
