@@ -4,8 +4,8 @@
 # from the workspace (`*.workspace = true`), so that this directory also
 # builds alone. The values must stay equal to the workspace's.
 #
-# `publish = false` until the crate is complete (L2.2b: SIMD kernels and
-# `DdDense`; L2.3: `Interval` and `verify`).
+# `publish = false` until the crate is complete (L2.3: `Interval` and
+# `verify`).
 [package]
 name = "xingo-extprec"
 version = "0.1.0-dev"
@@ -19,18 +19,23 @@ categories = ["mathematics", "science", "algorithms"]
 publish = false
 
 [features]
-default = ["sparse"]
+default = ["sparse", "simd"]
 # `Real` for `DoubleDouble` over the containers and factorizations of
 # `xingo-sparse` (question E1 of the chapter: the dependency points from
 # here to `xingo-sparse`). Off: the scalar type and the slice kernels only.
 sparse = ["dep:xingo-sparse"]
-# Reserved for the SIMD kernels through `pulp` (L2.2b). Empty today: the
-# kernels are the scalar reference ones, whose results the SIMD versions
-# must reproduce bit for bit (invariant K1).
-simd = []
+# SIMD kernels through `pulp` (pure Rust, MIT; safe run-time dispatch,
+# Chapter 11.6). Off: the scalar reference kernels, bit for bit the same
+# results (invariant K1).
+simd = ["dep:pulp"]
 
 [dependencies]
 xingo-sparse = { path = "../sparse", version = "0.3.2", default-features = false, optional = true }
+# The version the workspace already locks (through faer). `x86-v3` is the
+# AVX2 + FMA token; `x86-v4` (AVX-512) is not used: the kernels have `W = 4`
+# lanes on every target (Chapter 11.5). MIT; its dependencies are MIT,
+# Apache-2.0 or Zlib (checked with `cargo tree` for 0.22.3).
+pulp = { version = "0.22.3", default-features = false, features = ["std", "x86-v3"], optional = true }
 
 [dev-dependencies]
 proptest = "1.6"
@@ -43,6 +48,16 @@ dashu-int = { version = "0.6.1", default-features = false, features = ["std"] }
 # `DoubleDouble`.
 [[test]]
 name = "sparse_dd"
+required-features = ["sparse"]
+
+# The measurements behind `DoubleDouble::lu_options` (Chapter 11.8) and the
+# timing harness of the kernels (L2.2b); both print Markdown tables.
+[[example]]
+name = "dd_profile"
+required-features = ["sparse"]
+
+[[example]]
+name = "dd_bench"
 required-features = ["sparse"]
 
 # The workspace's lints, spelled out (see the header comment).

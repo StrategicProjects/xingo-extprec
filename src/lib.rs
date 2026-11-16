@@ -1,16 +1,18 @@
 //! # Chapter 11 — `xingo-extprec`: extended precision and rigorous enclosures
 //!
-//! **Status: the scalar half (L2.2a).** The contract was approved by André
-//! on 2026-11-15 (PLAN.md trilha L2.1, D-0081 and D-0109; questions E1–E8
-//! below all answered "yes" as proposed) and lives in
-//! `contracts/xingo-extprec/`. Implemented here: the error-free
+//! **Status: double-double complete (L2.2a and L2.2b).** The contract was
+//! approved by André on 2026-11-15 (PLAN.md trilha L2.1, D-0081 and
+//! D-0109; questions E1–E8 below all answered "yes" as proposed) and lives
+//! in `contracts/xingo-extprec/`. Implemented here: the error-free
 //! transformations (Chapter 11.1), [`DoubleDouble`] with `impl
 //! xingo_sparse::Real` (Chapter 11.2), its decimal conversions (Chapters
-//! 11.3 and 11.4) and the scalar reference kernels (Chapter 11.5). **Not
-//! yet in the crate:** the SIMD kernels and `DdDense` (L2.2b), `Interval`
-//! and the module `verify` (L2.3); the parts of this chapter about them
-//! describe the contract. The section "Corrections to the approved
-//! contract" lists what the implementation found wrong in it.
+//! 11.3 and 11.4), the kernels — definitions, scalar reference and
+//! run-time dispatch (Chapter 11.5), SIMD through `pulp` (Chapter 11.6) —
+//! the dense kernel [`DdDense`] (Chapter 11.7) and the profile of
+//! `LuOptions` for double-double (Chapter 11.8). **Not yet in the crate:**
+//! `Interval` and the module `verify` (L2.3); the parts of this chapter
+//! about them describe the contract. The sections "Corrections to the
+//! approved contract" list what the implementation found wrong in it.
 //!
 //! ## Purpose
 //! A solver computes in `f64` and must sometimes know *how wrong* it is. A
@@ -94,10 +96,10 @@
 //! | `dd + dd` | AccurateDWPlusDW (JMP Alg. 6) | `≤ 3u²/(1 − 4u) < 3u² + 13u³` | 20 |
 //! | `dd · f64` | DWTimesFP3 (JMP Alg. 9, FMA) | `≤ 2u²` | 6 |
 //! | `dd · dd` | DWTimesDW3 (JMP Alg. 12, FMA) | `≤ 4u²` (MR; JMP proved `5u²`) | 9 |
-//! | `dd²` | DWPow2 (two-FMA product specialized) | `≤ 3u²` (Hubrecht & Melquiond 2026) | 6 |
+//! | `dd²` | DWPow2 (two-FMA product specialized) | `≤ 3u²` (Hubrecht & Melquiond 2026, binary64) | 6 |
 //! | `dd / f64` | DWDivFP3 (JMP Alg. 15) | `≤ 3u²` | 10 |
 //! | `dd / dd` | DWDivDW2 (JMP Alg. 17) | `≤ 15u² + 56u³` | 18 |
-//! | `√dd` | SQRTDWtoDW (LLMPR Alg. 8): a Newton step on `fl(√h)` | `≤ 25/8 u²` (**not checked**) | 8 |
+//! | `√dd` | SQRTDWtoDW (LLMPR Alg. 8): a Newton step on `fl(√h)` | `≤ 25/8 u²` (LLMPR Thm 3.6) | 8 |
 //!
 //! The addition is the *accurate* one: the QD library's default "sloppy"
 //! addition (11 flops) has unbounded relative error when the operands have
@@ -183,7 +185,8 @@
 //! (K1) *Kernels.* The SIMD kernels return, bit for bit, the results of
 //!      the scalar reference kernels of the same name: the summation order
 //!      is part of the contract of each kernel (stated in its docs), not
-//!      an implementation detail.
+//!      an implementation detail. (Where a result is a NaN both are NaN;
+//!      its sign and payload are not specified: Chapter 11.5.)
 //! (I1) *Inclusion.* For intervals `X`, `Y` and `∘` an operation: `x ∈ X,
 //!      y ∈ Y ⇒ x ∘ y ∈ X ∘ Y` whenever `x ∘ y` is defined.
 //! (I2) *Well-formed.* `lo ≤ hi`, neither is NaN, `lo < +∞`, `hi > −∞`; the
@@ -269,11 +272,15 @@
 //!   DWDivDW3's. The contract's remark "a cheaper variant is `9,8u²`" was
 //!   backwards: the *more expensive* algorithm has the better bound. The
 //!   division stays DWDivDW2 (see "Why not DWDivDW3" above).
-//! * `√dd`: the algorithm is SQRTDWtoDW of LLMPR; its constant `25/8`
-//!   could not be checked against the paper (not accessible). A
-//!   first-order analysis reproduces exactly `25/8` (Chapter 11.2), and
-//!   the tests check it against exact arithmetic.
-//! * `dd²` gained its own row (DWPow2, `3u²`), cited at second hand.
+//! * `√dd`: the algorithm is SQRTDWtoDW of LLMPR. Its constant `25/8`
+//!   could not be checked against the paper in L2.2a; L2.2b read the
+//!   author version (HAL hal-03482567v2): it is their Theorem 3.6, for `x
+//!   ≥ 2⁻⁹⁶⁸` barring overflow and underflow, asymptotically optimal
+//!   (Chapter 11.2). The tests check it against exact arithmetic.
+//! * `dd²` gained its own row (DWPow2, `3u²`). Cited at second hand in
+//!   L2.2a; L2.2b read the source (Hubrecht & Melquiond, ARITH 2026,
+//!   §IV-B): a machine-generated (Gappa) proof for binary64 with an
+//!   unbounded exponent range (Chapter 11.2).
 //! * Dot2Err needs `2 n u < 1`, not `n u < 1`; and the bounds of Sum2 and
 //!   Dot2 are restated for the four-lane order of the kernels (`γ²_{n+3}`
 //!   and `γ²_{n+5}` instead of `γ²_{n−1}` and `γ²_n`; Chapter 11.5).
@@ -301,13 +308,35 @@
 //!   `impl Error` for [`ParseDoubleDoubleError`], and the row `"dd²"` of
 //!   `ERROR_BOUNDS`.
 //!
+//! ## Corrections to the approved contract (L2.2b)
+//! * [`kernels::backend`] never returns `"avx512"`: the kernels have `W =
+//!   4` lanes on every target, which is the width of AVX2; an eight-lane
+//!   accumulation would be a different kernel (Chapter 11.5, Algorithm X).
+//!   The backends are `"scalar"`, `"neon"` and `"avx2"`
+//!   (ratified by the owner, 2026-11-15).
+//! * Invariant (K1) holds for every input, finite or not, with the one
+//!   reservation about the bits of a NaN stated above.
+//! * [`DdDense`]: the contract has the triangular solves "those of
+//!   `NaiveDense`" and `gemm_sub`/`syrk_sub` "through `kernels::gemm_sub`".
+//!   The solves use the vectorized column update too, and all three go
+//!   through the column update of `kernels::gemm_sub`, not that function
+//!   (its `B` is transposed with respect to the trait's). The results are
+//!   those of `NaiveDense` bit for bit either way (Chapter 11.7).
+//! * Not added to the contract's surface: the `LuOptions` profile for
+//!   `Lu<DoubleDouble>` (Chapter 11.8). The owner's choice (2026-11-15,
+//!   D-0111) is a constructor generic in the scalar in `xingo-sparse`
+//!   (`LuOptions::for_scalar::<T>()`); until it exists the profile is the
+//!   hidden, provisional `DoubleDouble::lu_options` (feature `sparse`).
+//! * The feature `simd` is on by default, as in the contract; `pulp` is
+//!   0.22.3, the version the workspace already locks through faer.
+//!
 //! ## Plan
-//! L2.2a (this state): EFTs, `DoubleDouble`, `impl Real`, scalar kernels,
-//! proptests against `dashu`, `Lu<DoubleDouble>` and
-//! `SupernodalLdl<DoubleDouble>` as integration tests. L2.2b: `pulp`
-//! kernels, `DdDense`. L2.3: `Interval`, `verify`, polishing; residual
-//! certificates on the Netlib bases; `--exact-check` uses the enclosures
-//! before the rational check.
+//! L2.2a: EFTs, `DoubleDouble`, `impl Real`, scalar kernels, proptests
+//! against `dashu`, `Lu<DoubleDouble>` and `SupernodalLdl<DoubleDouble>`
+//! as integration tests. L2.2b (this state): `pulp` kernels, `DdDense`,
+//! the profile of `LuOptions`. L2.3: `Interval`, `verify`, polishing;
+//! residual certificates on the Netlib bases; `--exact-check` uses the
+//! enclosures before the rational check.
 //!
 //! ## References
 //! Dekker, "A floating-point technique for extending the available
@@ -322,8 +351,9 @@
 //! arithmetic'", ACM TOMS 48 (2022). Stloukal & Jézéquel, "Lord of the
 //! Precision, the Two Floats: double-word arithmetic for complex numbers",
 //! arXiv:2611.08371 (2026), §3 (it restates the algorithms and bounds
-//! used here, and cites Hubrecht & Melquiond, "Verifying code that uses
-//! error-free transformations", ARITH 2026, for DWPow2). Lefèvre, Louvet, Muller,
+//! used here). Hubrecht & Melquiond, "Verifying code that uses error-free
+//! transformations", 33rd IEEE Symposium on Computer Arithmetic (ARITH
+//! 2026), §IV-B (DWPow2). Lefèvre, Louvet, Muller,
 //! Picot & Rideau, "Accurate calculation of Euclidean norms using
 //! double-word arithmetic", ACM TOMS 49 (2023). Rump, "Verification
 //! methods: rigorous results using floating-point arithmetic", Acta
@@ -338,9 +368,17 @@
 mod big;
 mod dd;
 mod decimal;
+#[cfg(feature = "sparse")]
+mod dense;
 mod eft;
 pub mod kernels;
+#[cfg(feature = "sparse")]
+mod profile;
+#[cfg(feature = "simd")]
+mod simd;
 
 pub use dd::{DoubleDouble, ErrorBound};
 pub use decimal::ParseDoubleDoubleError;
+#[cfg(feature = "sparse")]
+pub use dense::DdDense;
 pub use eft::{fast_two_sum, two_prod, two_sum};
