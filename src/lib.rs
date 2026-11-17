@@ -1,6 +1,7 @@
 //! # Chapter 11 — `xingo-extprec`: extended precision and rigorous enclosures
 //!
-//! **Status: double-double complete (L2.2a and L2.2b).** The contract was
+//! **Status: complete for v0.1 but for the elementary functions (L2.2a,
+//! L2.2b and L2.3).** The contract was
 //! approved by André on 2026-11-15 (PLAN.md trilha L2.1, D-0081 and
 //! D-0109; questions E1–E8 below all answered "yes" as proposed) and lives
 //! in `contracts/xingo-extprec/`. Implemented here: the error-free
@@ -8,11 +9,11 @@
 //! xingo_sparse::Real` (Chapter 11.2), its decimal conversions (Chapters
 //! 11.3 and 11.4), the kernels — definitions, scalar reference and
 //! run-time dispatch (Chapter 11.5), SIMD through `pulp` (Chapter 11.6) —
-//! the dense kernel [`DdDense`] (Chapter 11.7) and the profile of
-//! `LuOptions` for double-double (Chapter 11.8). **Not yet in the crate:**
-//! `Interval` and the module `verify` (L2.3); the parts of this chapter
-//! about them describe the contract. The sections "Corrections to the
-//! approved contract" list what the implementation found wrong in it.
+//! the dense kernel [`DdDense`] (Chapter 11.7), the profile of
+//! `LuOptions` for double-double (Chapter 11.8), [`Interval`] (Chapter
+//! 11.9) and the module [`verify`] — rigorous residuals and polishing
+//! (Chapter 11.10). The sections "Corrections to the approved contract"
+//! list what the implementation found wrong in it.
 //!
 //! ## Purpose
 //! A solver computes in `f64` and must sometimes know *how wrong* it is. A
@@ -64,9 +65,9 @@
 //!    dot products (Ogita, Rump & Oishi 2005) and the double-double `dot`,
 //!    `axpy` and small-block `gemm`; scalar reference and SIMD (`pulp`)
 //!    versions with the same results bit for bit.
-//! 5. `Interval` (L2.3): outward-rounded interval arithmetic on `f64` endpoints
+//! 5. [`Interval`]: outward-rounded interval arithmetic on `f64` endpoints
 //!    *without* changing the rounding mode.
-//! 6. `verify` (L2.3; feature `sparse`): rigorous enclosures of residuals
+//! 6. [`verify`] (feature `sparse`): rigorous enclosures of residuals
 //!    `A x − b` over the containers of `xingo-sparse`, and the polishing
 //!    step (iterative refinement with double-double residuals) around a
 //!    caller-supplied solve.
@@ -140,8 +141,10 @@
 //! the *correctly rounded* directed value, as tight as hardware directed
 //! rounding, at 2–4 times the cost of a plain operation. Division and
 //! square root use the FMA residual (`e = fma(−q, y, x)` has the sign of
-//! `x − q y` exactly). When an EFT is not exact (underflow) the endpoint
-//! moves one further step outward. This is the design of Rump, Zimmermann,
+//! `x − q y` exactly). When an EFT is not exact (underflow) the operation
+//! is redone scaled by `2²⁰⁰`, where it is, so the endpoints are the
+//! directed roundings there too (Chapter 11.9, step N6; the contract had
+//! "one further step outward"). This is the design of Rump, Zimmermann,
 //! Boldo & Melquiond (2009) and of the IEEE 1788 reference notes; `inari`
 //! (read, not used) takes the other route, MXCSR through `unsafe`.
 //!
@@ -151,9 +154,9 @@
 //! whenever `2 n u < 1` and no overflow occurs, underflow included in `β`
 //! (their Corollary 5.9; [`kernels::dot2_err`] is that algorithm over four
 //! accumulators, with its own proof in Chapter 11.5 and the hypothesis
-//! `2(n + 3)u < 1`). `verify::residual` applies it row by row: the enclosure of `a_iᵀx −
-//! b_i` costs about 25 flops per nonzero, against 2 for the plain residual
-//! and thousands for a rational one.
+//! `2(n + 3)u < 1`). `verify::residual` applies it row by row (Chapter
+//! 11.10): the enclosure of `a_iᵀx − b_i` costs about 25 flops per nonzero,
+//! against 2 for the plain residual and thousands for a rational one.
 //!
 //! ## What a certificate means
 //! (C1) The enclosures are statements about the **`f64` model**: the
@@ -166,7 +169,7 @@
 //!      correct software FMA where the CPU has none; slow, never wrong).
 //! (C3) `verify` never claims more than it proved: when a hypothesis of a
 //!      bound fails (overflow, `n u ≥ 1`, NaN in the data) the result is
-//!      `Interval::ENTIRE` or an error, never a finite interval.
+//!      [`Interval::ENTIRE`] or an error, never a finite interval.
 //!
 //! ## Invariants (each becomes a `debug_assert!` or `check_invariants()`)
 //! (D1) *Normalized.* Every finite [`DoubleDouble`] `(h, ℓ)` satisfies `h =
@@ -190,12 +193,14 @@
 //! (I1) *Inclusion.* For intervals `X`, `Y` and `∘` an operation: `x ∈ X,
 //!      y ∈ Y ⇒ x ∘ y ∈ X ∘ Y` whenever `x ∘ y` is defined.
 //! (I2) *Well-formed.* `lo ≤ hi`, neither is NaN, `lo < +∞`, `hi > −∞`; the
-//!      empty set is a separate value (`Interval::EMPTY`).
+//!      empty set is a separate value ([`Interval::EMPTY`]).
 //! (I3) *Tightness.* `+`, `−`, `·`, `/` (divisor not containing zero) and
 //!      `sqrt` return the *hull of the exact range rounded outward to
 //!      `F`*: the tightest representable interval.
 //! (V1) *Residuals.* `verify::residual(A, x, b)[i] ∋ a_iᵀx − b_i` for the
 //!      stored `f64` values (C1), for every row.
+//!
+//! (Chapter 11.9 restates and proves I1–I3; Chapter 11.10, V1.)
 //!
 //! ## How `xingo_sparse::Real` is met, and one amendment to it
 //! `Real` (Chapter 5.6) asks (R1) "the field operations are the correctly
@@ -330,13 +335,75 @@
 //! * The feature `simd` is on by default, as in the contract; `pulp` is
 //!   0.22.3, the version the workspace already locks through faer.
 //!
+//! ## Corrections to the approved contract (L2.3)
+//! * **Underflow.** The contract moved an endpoint "one further step
+//!   outward" when an EFT is not exact. Chapter 11.9 instead recovers the
+//!   exact sign of the residual by scaling (step N6), so (I3) holds without
+//!   exception: every endpoint of `+ − · / √ x²` is the directed rounding
+//!   of the exact one, for all operands.
+//! * **`Interval / Interval` with zero in the divisor.** As in the
+//!   contract (`ENTIRE`, or a half-line when zero is an endpoint), with two
+//!   cases it left open: `X / [0, 0]` is `ENTIRE` (the set of quotients is
+//!   empty; `∅` would be the set-theoretic answer, but an exact zero
+//!   divisor must not be able to prove anything), and `[0, 0] / Y` is `[0,
+//!   0]` for `Y ≠ [0, 0]`.
+//! * **The empty set and the predicates.** `certainly_le`, `certainly_ge`
+//!   and `certainly_within` are `false` on `∅` (the contract's wording,
+//!   "every element of `X` …", is vacuously true there): invariant (C3).
+//!   `verify::norm_inf_bound` returns `+∞` if an interval is empty.
+//! * **Non-real arguments.** [`Interval::point`] panics on `±∞` as well as
+//!   on NaN; [`Interval::mid_rad`] panics on a NaN or a negative radius
+//!   and returns `ENTIRE` for an infinite midpoint; [`Interval::enclose`]
+//!   of an infinite or NaN double-double is `ENTIRE`; an operator with a
+//!   NaN or infinite `f64` operand returns `ENTIRE`; `mid` of a half-line
+//!   is `±Ω`.
+//! * **`Display`.** Without a precision the endpoints are printed as
+//!   `f64` (shortest round trip: the text identifies the interval); with a
+//!   precision they are rounded **outward**, so the printed pair contains
+//!   the interval (Chapter 11.9, Algorithm D; the owner's choice).
+//! * **Algorithm V for a double-double `x`.** The contract announced "two
+//!   `two_prod` per entry, the bound gains the second-order terms". No new
+//!   bound is needed: `Σ a_ij (h_j + ℓ_j) − b_i` *is* a dot product of
+//!   `f64` vectors of length `2k + 1`, to which Dot2Err applies as it
+//!   stands (Chapter 11.10).
+//! * **Step V3.** The enclosure is `[▽(h + ▽(ℓ − β)), △(h + △(ℓ + β))]`
+//!   for `r = h + ℓ`, not `enclose(r) + [−β, β]`: the same theorem, one to
+//!   two ulps narrower.
+//! * **Algorithm P, convergence.** The contract stopped at `‖r‖∞ ≤ τ
+//!   (‖A‖∞‖x‖∞ + ‖b‖∞)`. On the Netlib bases that global scale declared
+//!   badly scaled models converged with a true residual far above
+//!   double-double level, so the test is now **per row** (the owner's
+//!   choice, 2026-11-16): `|r_i| ≤ τ (Σ_j |a_ij x_j| + |b_i|)` in every
+//!   row, its right-hand side rounded against convergence (Chapter 11.10).
+//!   Progress (`PolishOptions::min_progress`) stays in the norm `‖r‖∞`,
+//!   as in the contract: measuring it on the row scale too was tried and
+//!   measured worse (Chapter 11.10 keeps the numbers). Same signature and
+//!   fields; the meaning of `PolishOptions::tol` changes. With the row
+//!   test, *stagnated* is a common and harmless outcome on bases with
+//!   degenerate rows (9 of the 93 of Netlib).
+//! * **Algorithm P.** Step P2 is made precise (five tests, in order), and
+//!   a correction after which the residual is larger, or not finite, is
+//!   **undone**: the residual never increases. `PolishReport::iterations`
+//!   counts the corrections kept. `polish` reports a non-square matrix as
+//!   `VerifyError::Dimension`.
+//! * Added to the contract's surface, ratified by the owner (2026-11-16):
+//!   `impl Display + Error` for [`InvalidInterval`] and
+//!   `verify::VerifyError`; `impl LowerExp for Interval` (`{:e}`, same
+//!   rounding rule as `Display`); `AddAssign`, `SubAssign`, `MulAssign`,
+//!   `DivAssign` for `Interval` with an `Interval` and with an `f64`; the
+//!   operators with the scalar on the left, `f64 ∘ Interval`; and a total
+//!   `impl From<f64> for Interval` (`ENTIRE` for a NaN or an infinity,
+//!   where `Interval::point` panics).
+//!
 //! ## Plan
 //! L2.2a: EFTs, `DoubleDouble`, `impl Real`, scalar kernels, proptests
 //! against `dashu`, `Lu<DoubleDouble>` and `SupernodalLdl<DoubleDouble>`
-//! as integration tests. L2.2b (this state): `pulp` kernels, `DdDense`,
-//! the profile of `LuOptions`. L2.3: `Interval`, `verify`, polishing;
-//! residual certificates on the Netlib bases; `--exact-check` uses the
-//! enclosures before the rational check.
+//! as integration tests. L2.2b: `pulp` kernels, `DdDense`, the profile of
+//! `LuOptions`. L2.3 (this state): `Interval`, `verify`, polishing;
+//! residual certificates on the Netlib bases (an integration test of
+//! `xingo-simplex`, which this crate does not depend on). Still to come:
+//! `--exact-check` in the CLI, which is to use the enclosures before the
+//! rational check, and the elementary functions (L2.4).
 //!
 //! ## References
 //! Dekker, "A floating-point technique for extending the available
@@ -371,14 +438,18 @@ mod decimal;
 #[cfg(feature = "sparse")]
 mod dense;
 mod eft;
+mod interval;
 pub mod kernels;
 #[cfg(feature = "sparse")]
 mod profile;
 #[cfg(feature = "simd")]
 mod simd;
+#[cfg(feature = "sparse")]
+pub mod verify;
 
 pub use dd::{DoubleDouble, ErrorBound};
 pub use decimal::ParseDoubleDoubleError;
 #[cfg(feature = "sparse")]
 pub use dense::DdDense;
 pub use eft::{fast_two_sum, two_prod, two_sum};
+pub use interval::{Interval, InvalidInterval};

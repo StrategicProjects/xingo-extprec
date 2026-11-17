@@ -4,8 +4,8 @@
 # from the workspace (`*.workspace = true`), so that this directory also
 # builds alone. The values must stay equal to the workspace's.
 #
-# `publish = false` until the crate is complete (L2.3: `Interval` and
-# `verify`).
+# `publish = false` until the provisional `DoubleDouble::lu_options` leaves
+# (L1.8) and v0.1 is released (after L2.4).
 [package]
 name = "xingo-extprec"
 version = "0.1.0-dev"
@@ -48,6 +48,11 @@ dashu-int = { version = "0.6.1", default-features = false, features = ["std"] }
 # `DoubleDouble`.
 [[test]]
 name = "sparse_dd"
+required-features = ["sparse"]
+
+# The acceptance tests of `verify` (Chapter 11.10) against exact rationals.
+[[test]]
+name = "verify"
 required-features = ["sparse"]
 
 # The measurements behind `DoubleDouble::lu_options` (Chapter 11.8) and the
