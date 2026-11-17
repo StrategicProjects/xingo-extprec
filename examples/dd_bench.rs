@@ -340,7 +340,7 @@ fn ldl_group() {
 fn lu_group() {
     for (n, per_col) in [(800, 2), (2000, 3)] {
         lu_in::<f64>(&format!("f64 n={n}"), n, per_col, LuOptions::default());
-        lu_in::<Dd>(&format!("dd n={n}"), n, per_col, Dd::lu_options());
+        lu_in::<Dd>(&format!("dd n={n}"), n, per_col, LuOptions::for_scalar::<Dd>());
     }
 }
 

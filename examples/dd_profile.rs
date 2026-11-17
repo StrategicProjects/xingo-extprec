@@ -1,6 +1,7 @@
 //! Which thresholds of `xingo-sparse` are calibrated for `f64`, and what
 //! they should be in double-double (task L2.2b, Chapter 11.8 of the
-//! crate): the measurements behind `DoubleDouble::lu_options`.
+//! crate): the measurements behind Rule P of `xingo-sparse` (its Chapter
+//! 5.3, `LuOptions::for_scalar`) and the scaled KKT defaults (Chapter 5.14).
 //!
 //! Each table factorizes the same matrices in `DoubleDouble` under several
 //! *profiles* of options and prints what came out: whether the matrix was
@@ -152,13 +153,13 @@ fn lu_profiles() -> Vec<(&'static str, LuOptions)> {
     vec![
         ("f64 (default)", d),
         ("drop_tol = 0", LuOptions { drop_tol: 0.0, ..d }),
-        ("dd (proposed)", Dd::lu_options()),
+        ("dd (Rule P)", LuOptions::for_scalar::<Dd>()),
         (
             "dd, tols = 0",
             LuOptions {
                 drop_tol: 0.0,
                 abs_pivot_tol: 0.0,
-                ..Dd::lu_options()
+                ..LuOptions::for_scalar::<Dd>()
             },
         ),
     ]
@@ -227,7 +228,7 @@ fn drop_sweep(name: &str, n: usize, make: &dyn Fn(u64) -> Entries) {
     ] {
         let opts = LuOptions {
             drop_tol,
-            ..Dd::lu_options()
+            ..LuOptions::for_scalar::<Dd>()
         };
         let mut scaled: Vec<f64> = Vec::new();
         let (mut nnz, mut growth, mut failed) = (0_usize, 0.0_f64, 0);
@@ -372,7 +373,7 @@ fn update_row(n: usize, weak: f64, stability_tol: f64, label: &str) {
         update_stability_tol: stability_tol,
         refactor_interval: 1000,
         fill_factor: 1e9,
-        ..Dd::lu_options()
+        ..LuOptions::for_scalar::<Dd>()
     };
     let mut heading = structural(n);
     let mut lu = Lu::<Dd>::new(opts);
@@ -585,9 +586,9 @@ fn main() {
     println!("## LU (`Lu<DoubleDouble>`): factorization and FTRAN under four profiles\n");
     println!(
         "Profiles: `f64 (default)` = `LuOptions::default()`; `drop_tol = 0` = the options of the \
-         tests of L2.2a; `dd (proposed)` = `DoubleDouble::lu_options()` = {:?}; `dd, tols = 0` = \
+         tests of L2.2a; `dd (Rule P)` = `LuOptions::for_scalar::<DoubleDouble>()` = {:?}; `dd, tols = 0` = \
          the same with `drop_tol = abs_pivot_tol = 0`.\n",
-        Dd::lu_options()
+        LuOptions::for_scalar::<Dd>()
     );
     println!(
         "| matrix | profile | outcome | ‖Bx − b‖∞ | scaled (units of n·ε_dd) | ‖x − 1‖∞ | growth | nnz(L+U) | Markowitz pivots |"
@@ -622,7 +623,7 @@ fn main() {
 
     println!("\n## LU: the drop tolerance alone\n");
     println!(
-        "15 matrices per family (seeds 1000, 1017, …); the other options are the proposed dd \
+        "15 matrices per family (seeds 1000, 1017, …); the other options are Rule P's dd \
          profile. `scaled` is `‖Bx − b‖∞ / (n ε_dd (max|b_ij| ‖x‖∞ + ‖b‖∞))`.\n"
     );
     println!(
@@ -638,7 +639,7 @@ fn main() {
 
     println!("\n## Forrest–Tomlin updates: the stability tolerance\n");
     println!(
-        "90 exchanges on a random basis of order 150 (other options: the proposed dd profile, \
+        "90 exchanges on a random basis of order 150 (other options: Rule P's dd profile, \
          with the update and fill limits lifted); every third entering column has pivot `α_r = \
          weak`. `ratio` is the scaled residual of an FTRAN with the updated factor over that of \
          a fresh factorization of the same basis (floored at one unit of `ε_dd`), over the \

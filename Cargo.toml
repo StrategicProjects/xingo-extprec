@@ -4,8 +4,8 @@
 # from the workspace (`*.workspace = true`), so that this directory also
 # builds alone. The values must stay equal to the workspace's.
 #
-# `publish = false` until the provisional `DoubleDouble::lu_options` leaves
-# (L1.8) and v0.1 is released (after L2.4).
+# `publish = false` until v0.1 is released (after L2.4; the provisional
+# `LuOptions` profile left in L1.8, for `xingo-sparse` 0.4.0's Rule P).
 [package]
 name = "xingo-extprec"
 version = "0.1.0-dev"
@@ -30,7 +30,7 @@ sparse = ["dep:xingo-sparse"]
 simd = ["dep:pulp"]
 
 [dependencies]
-xingo-sparse = { path = "../sparse", version = "0.3.2", default-features = false, optional = true }
+xingo-sparse = { path = "../sparse", version = "0.4.0", default-features = false, optional = true }
 # The version the workspace already locks (through faer). `x86-v3` is the
 # AVX2 + FMA token; `x86-v4` (AVX-512) is not used: the kernels have `W = 4`
 # lanes on every target (Chapter 11.5). MIT; its dependencies are MIT,
@@ -55,7 +55,7 @@ required-features = ["sparse"]
 name = "verify"
 required-features = ["sparse"]
 
-# The measurements behind `DoubleDouble::lu_options` (Chapter 11.8) and the
+# The measurements behind Rule P of `xingo-sparse` (Chapter 11.8) and the
 # timing harness of the kernels (L2.2b); both print Markdown tables.
 [[example]]
 name = "dd_profile"

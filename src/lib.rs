@@ -329,9 +329,10 @@
 //!   those of `NaiveDense` bit for bit either way (Chapter 11.7).
 //! * Not added to the contract's surface: the `LuOptions` profile for
 //!   `Lu<DoubleDouble>` (Chapter 11.8). The owner's choice (2026-11-15,
-//!   D-0111) is a constructor generic in the scalar in `xingo-sparse`
-//!   (`LuOptions::for_scalar::<T>()`); until it exists the profile is the
-//!   hidden, provisional `DoubleDouble::lu_options` (feature `sparse`).
+//!   D-0111) is a constructor generic in the scalar in `xingo-sparse`; it
+//!   exists since `xingo-sparse` 0.4.0 (`LuOptions::for_scalar::<T>()`,
+//!   task L1.8, D-0113), and the hidden, provisional constructor this
+//!   crate carried until then is gone.
 //! * The feature `simd` is on by default, as in the contract; `pulp` is
 //!   0.22.3, the version the workspace already locks through faer.
 //!

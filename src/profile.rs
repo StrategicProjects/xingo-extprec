@@ -1,13 +1,20 @@
-//! # Chapter 11.8 — Thresholds for double-double: the profile of `LuOptions`
+//! # Chapter 11.8 — Thresholds for double-double: the measurements behind Rule P
 //!
 //! ## Purpose
 //! `xingo_sparse::LuOptions::default()` is calibrated for `f64`: some of
 //! its thresholds are multiples of the machine epsilon in disguise. Handed
 //! unchanged to `Lu<DoubleDouble>` they cap the accuracy of the factors at
 //! that of `f64` or reject matrices that double-double factorizes without
-//! trouble. This chapter says which thresholds depend on the epsilon,
-//! states the rule that carries them to double-double and records the
-//! measurements behind it. [`DoubleDouble::lu_options`] is the result.
+//! trouble. This chapter records which thresholds depend on the epsilon
+//! and the measurements behind the rule that carries them to
+//! double-double. The rule itself lives in `xingo-sparse` since its 0.4.0
+//! (task L1.8, D-0113): Rule P of its Chapter 5.3,
+//! `LuOptions::for_scalar::<T>()`, which `Lu::<T>::default()` uses, and
+//! the defaults of `Regularization<T>` and `Refinement<T>` of its Chapter
+//! 5.14. Until then this crate carried the profile itself, as a hidden
+//! and provisional constructor on `DoubleDouble` (removed in L1.8); nothing
+//! of it is code here any more except the test that the generic rule
+//! gives the values measured below.
 //!
 //! ## Notation
 //! `ε₆₄ = 2⁻⁵²` and `ε_dd = 2⁻¹⁰⁴` are the `Real::EPSILON` of the two
@@ -32,9 +39,9 @@
 //!     `update_stability_tol` — is multiplied by `ρ`.
 //! P2. \[Keep.\] Every other option keeps its default.
 //!
-//! For `f64` the rule is the identity (`ρ = 1`), so it could be stated for
-//! any scalar `T` as "multiply by `ε_T / ε₆₄`"; that generic form belongs
-//! in `xingo-sparse` and is proposed there, not implemented here.
+//! For `f64` the rule is the identity (`ρ = 1`), so it is stated for any
+//! scalar `T` as "multiply by `ε_T / ε₆₄`" — the generic form of
+//! `xingo-sparse` (Rule P of its Chapter 5.3).
 //!
 //! ## Measurements (`examples/dd_profile.rs`, 2026-11-15)
 //! All in `Lu<DoubleDouble>`, residuals computed in double-double.
@@ -72,15 +79,18 @@
 //!   `7.4·10¹²`, `2.1·10¹¹` under `10⁻⁸ ρ` (which refused 1, 20, 13;
 //!   median loss `230`, `160`, `1.4` against `4 400`, `23 000`, `11`).
 //!   Hence `ρ`, not `√ρ` — and a caveat: **no tolerance bounds the loss**
-//!   (`10⁻²⁸` still let `7.4·10¹²` through); a caller that needs
-//!   double-double accuracy after an exchange with a tiny pivot should
-//!   refactorize.
+//!   (`10⁻²⁸` still let `7.4·10¹²` through). Task L1.8 traced the loss to
+//!   the multipliers of the row eta, which no tolerance on the stability
+//!   statistic sees, and `xingo-sparse` 0.4.0 bounds them (step U4′ of its
+//!   Chapter 5.5, `LuOptions::update_multiplier_limit`; D-0113).
 //! * **`growth_limit`.** The largest growth seen was `6.5·10⁷`; no
 //!   measurement speaks for changing the limit, so it stays.
 //!
 //! ## What is not in `LuOptions`
-//! The same question for the KKT solver was measured and is **proposed,
-//! not implemented** (the defaults live in `xingo-sparse`):
+//! The same question for the KKT solver was measured here and is, since
+//! `xingo-sparse` 0.4.0, the rule of the defaults of `Regularization<T>`
+//! and `Refinement<T>` (its Chapter 5.14: shifts and bump × `√ρ`, pivot
+//! tolerance and target × `ρ`):
 //! `Refinement::default()` stops at a residual of `10⁻¹²`, the accuracy of
 //! `f64` (`2.2·10⁻²⁸ = 10⁻¹² ρ` was reached in 5–8 steps where it is
 //! attainable); `Regularization::default()` (`10⁻⁶`, `10⁻⁸`) leaves a plain
@@ -90,74 +100,39 @@
 //! difference on the matrices tried.
 //!
 //! ## Invariants
-//! (O1) [`DoubleDouble::lu_options`] differs from `LuOptions::default()`
-//!      in the three fields of step P1 only, each exactly `ρ` times the
-//!      default (a power of two: the product is exact). Tested.
+//! (O1) `LuOptions::for_scalar::<DoubleDouble>()` differs from
+//!      `LuOptions::default()` in the three fields of step P1 only, each
+//!      exactly `ρ` times the default (a power of two: the product is
+//!      exact) — the values of the provisional profile this chapter
+//!      measured. Tested here; the generic statement is tested in
+//!      `xingo-sparse`.
 //!
 //! ## References
-//! Chapter 5.3 of `xingo-sparse` (`LuOptions`: what each threshold tests)
+//! Chapter 5.3 of `xingo-sparse` (`LuOptions`: what each threshold tests;
+//! Rule P)
 //! and Chapter 5.5 (the stability test of the Forrest–Tomlin update);
 //! Higham, *Accuracy and Stability of Numerical Algorithms* (2002), §9.3
 //! (growth and backward error of Gaussian elimination); D-0109 (the
 //! reservation of L2.2a that this chapter answers).
 
-use xingo_sparse::LuOptions;
-
-use crate::dd::DoubleDouble;
-
-/// `ρ = ε_dd / ε₆₄ = 2⁻⁵²` (the chapter).
-const EPSILON_RATIO: f64 = f64::EPSILON;
-
-impl DoubleDouble {
-    /// The options of `xingo_sparse::Lu<DoubleDouble>`: the defaults of
-    /// `LuOptions` with the three thresholds that are magnitudes of
-    /// rounding noise — `drop_tol`, `abs_pivot_tol`,
-    /// `update_stability_tol` — multiplied by `ε_dd / ε₆₄ = 2⁻⁵²` (Rule P
-    /// of Chapter 11.8, with the measurements behind it). With
-    /// `LuOptions::default()` a double-double factorization is only as
-    /// accurate as an `f64` one.
-    ///
-    /// ```
-    /// use xingo_extprec::DoubleDouble;
-    /// use xingo_sparse::{Lu, LuOptions};
-    /// let opts = DoubleDouble::lu_options();
-    /// assert_eq!(opts.drop_tol, 1e-12 * f64::EPSILON);
-    /// assert_eq!(opts.rel_pivot_tol, LuOptions::default().rel_pivot_tol);
-    /// let _lu = Lu::<DoubleDouble>::new(opts);
-    /// ```
-    ///
-    /// *Provisional.* The profile belongs in `xingo-sparse`, as a
-    /// constructor generic in the scalar (`LuOptions::for_scalar::<T>()`,
-    /// D-0111); this function is hidden from the documentation and leaves
-    /// before the crate is published.
-    #[doc(hidden)]
-    #[must_use]
-    pub fn lu_options() -> LuOptions {
-        let d = LuOptions::default();
-        LuOptions {
-            abs_pivot_tol: d.abs_pivot_tol * EPSILON_RATIO,
-            update_stability_tol: d.update_stability_tol * EPSILON_RATIO,
-            drop_tol: d.drop_tol * EPSILON_RATIO,
-            ..d
-        }
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::float_cmp)] // the scalings are exact
 mod tests {
-    use super::*;
+    use xingo_sparse::{Lu, LuFactor, LuOptions, Refinement, Regularization};
 
-    /// Invariant (O1).
+    use crate::dd::DoubleDouble;
+
+    /// Invariant (O1): Rule P of `xingo-sparse` gives the profile measured
+    /// in this chapter (`ρ = 2⁻⁵²` on the three noise thresholds).
     #[test]
-    fn profile_scales_three_thresholds_and_nothing_else() {
+    fn rule_p_gives_the_measured_profile() {
         let d = LuOptions::default();
-        let p = DoubleDouble::lu_options();
-        let rho = DoubleDouble::EPSILON.hi() / f64::EPSILON;
-        assert_eq!(rho, EPSILON_RATIO);
-        assert_eq!(p.drop_tol, d.drop_tol * rho);
-        assert_eq!(p.abs_pivot_tol, d.abs_pivot_tol * rho);
-        assert_eq!(p.update_stability_tol, d.update_stability_tol * rho);
+        let p = LuOptions::for_scalar::<DoubleDouble>();
+        let rho = f64::EPSILON;
+        assert_eq!(DoubleDouble::EPSILON.hi() / f64::EPSILON, rho);
+        assert_eq!(p.drop_tol, 1e-12 * rho);
+        assert_eq!(p.abs_pivot_tol, 1e-10 * rho);
+        assert_eq!(p.update_stability_tol, 1e-8 * rho);
         assert_eq!(
             LuOptions {
                 drop_tol: d.drop_tol,
@@ -167,5 +142,16 @@ mod tests {
             },
             d
         );
+        assert_eq!(*Lu::<DoubleDouble>::default().options(), p);
+        // The "dd reg." profile of the KKT table above.
+        let r = Regularization::<DoubleDouble>::default();
+        let s = rho.sqrt();
+        assert_eq!(r.primal, DoubleDouble::from_f64(1e-6 * s));
+        assert_eq!(r.dual, DoubleDouble::from_f64(1e-8 * s));
+        assert_eq!(r.pivot_tol, Some(DoubleDouble::from_f64(1e-13 * rho)));
+        assert_eq!(r.bump, DoubleDouble::from_f64(2e-7 * s));
+        let f = Refinement::<DoubleDouble>::default();
+        assert_eq!(f.target_residual, DoubleDouble::from_f64(1e-12 * rho));
+        assert_eq!(f.max_iters, 10);
     }
 }
