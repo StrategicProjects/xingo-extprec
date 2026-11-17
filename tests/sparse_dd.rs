@@ -529,7 +529,7 @@ fn dd_dense_returns_the_bits_of_naive_dense() {
         NaiveDense.trsm_lower(&l, &mut y2, false);
         assert_eq!(bits(&y1), bits(&y2), "trsm_lower {k} × {n}");
 
-        // potrf and sytrf are NaiveDense's.
+        // potrf (vectorized since L1.8, step K5) and sytrf (NaiveDense's).
         let mut spd = dd_block(k, k, &mut rng);
         for j in 0..k {
             #[allow(clippy::cast_precision_loss)] // small
@@ -538,6 +538,15 @@ fn dd_dense_returns_the_bits_of_naive_dense() {
         let (mut p1, mut p2) = (spd.clone(), spd.clone());
         assert_eq!(DdDense.potrf(&mut p1), NaiveDense.potrf(&mut p2));
         assert_eq!(bits(&p1), bits(&p2), "potrf {k}");
+        // A block that is not positive definite fails at the same column,
+        // with the same partial factor.
+        let mut bad = spd.clone();
+        bad.set(k - 1, k - 1, -Dd::ONE);
+        let (mut b1, mut b2) = (bad.clone(), bad);
+        let failed = DdDense.potrf(&mut b1);
+        assert!(failed.is_err());
+        assert_eq!(failed, NaiveDense.potrf(&mut b2));
+        assert_eq!(bits(&b1), bits(&b2), "potrf {k}, indefinite");
         let (mut s1, mut s2) = (spd.clone(), spd);
         let (mut q1, mut q2) = (Perm::identity(0), Perm::identity(0));
         let (mut t1, mut t2) = (Vec::new(), Vec::new());

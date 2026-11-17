@@ -28,11 +28,23 @@
 //! K4. \[`trsm_lower`, `B ← L⁻¹ B`.\] For each column `c` of `B`, for `l =
 //!     0, …, n − 1`: `x ← b_lc ⊘ l_ll`, `b_lc ← x`, then the column update
 //!     of the rows below `l` with `a = L[l + 1.., l]` and `t = x`.
-//! K5. \[`potrf`, `sytrf`.\] Those of `NaiveDense`, unchanged: their inner
-//!     loops are sequential sums along a *row* (`Σ_k l_ik l_jk`, summed
-//!     left to right), which lanes would reorder.
+//! K5. \[`potrf`, left-looking (Algorithm P of Chapter 5.16 since
+//!     `xingo-sparse` 0.4.0).\] For `j = 0, …, n − 1`: for `k < j`, the
+//!     column update of the rows `i ≥ j` of column `j` with `a = L[j..,
+//!     k]` and `t = l_jk`; then the pivot test and `l_jj ← √a_jj` of
+//!     `NaiveDense`, and `l_ij ← a_ij ⊘ l_jj` for `i > j`.
+//! K6. \[`sytrf`.\] That of `NaiveDense`, unchanged: its eliminations
+//!     update a full working copy row and column at once, and the block
+//!     factorization is not where the supernodal factorization spends its
+//!     time.
 //!
-//! K1–K4 are the loops of `NaiveDense` (Chapter 5.16, "Loop order"), which
+//! *Task L1.8.* Until `xingo-sparse` 0.3.x the generic `potrf` summed each
+//! entry along a row of `L` (`Σ_k l_ik l_jk`, left to right, subtracted
+//! once), which lanes would reorder, so it was `NaiveDense`'s here too;
+//! 0.4.0 subtracts term by term down a column, the statement of K1–K4, and
+//! K5 vectorizes it with the same bits.
+//!
+//! K1–K5 are the loops of `NaiveDense` (Chapter 5.16, "Loop order"), which
 //! compute each entry as `x ← x − a · t` with the same operands in the
 //! same order; the column update is that statement for a whole column, and
 //! it is bit for bit the scalar one (invariant K1 of Chapter 11.5). The
@@ -72,8 +84,9 @@ use crate::kernels::{BLOCK_K, ColumnUpdate, dispatch, gemm_blocked};
 /// The dense kernel of `xingo-sparse` for double-double blocks, with the
 /// results of `NaiveDense` bit for bit (Chapter 11.7): `gemm_sub`,
 /// `syrk_sub` and the triangular solves run the column update of
-/// [`crate::kernels::gemm_sub`] on SIMD registers (feature `simd`);
-/// `potrf` and `sytrf` are those of `NaiveDense`. With it
+/// [`crate::kernels::gemm_sub`] on SIMD registers (feature `simd`), and
+/// so does `potrf` (left-looking since `xingo-sparse` 0.4.0); `sytrf` is
+/// that of `NaiveDense`. With it
 /// `SupernodalLdl<DoubleDouble, DdDense>` spends its time in SIMD.
 ///
 /// ```
@@ -146,6 +159,33 @@ fn trsm_transposed<U: ColumnUpdate>(
     }
 }
 
+/// Step K5 (the error of a non-positive pivot is `NaiveDense`'s).
+#[inline(always)] // into `pulp`'s `vectorize` (Chapter 11.6)
+#[allow(clippy::inline_always)]
+fn potrf_columns<U: ColumnUpdate>(
+    update: U,
+    n: usize,
+    a: &mut DenseBlock<DoubleDouble>,
+) -> Result<(), DenseError> {
+    for j in 0..n {
+        let (done, rest) = a.data.split_at_mut(j * n);
+        let cj = &mut rest[j..n];
+        for k in 0..j {
+            update.column_sub(cj, &done[j + k * n..(k + 1) * n], done[j + k * n]);
+        }
+        let d = cj[0];
+        if !d.is_finite() || d <= DoubleDouble::ZERO {
+            return Err(DenseError::NotPositiveDefinite { position: j });
+        }
+        let ljj = d.sqrt();
+        cj[0] = ljj;
+        for x in &mut cj[1..] {
+            *x /= ljj;
+        }
+    }
+    Ok(())
+}
+
 /// Step K4.
 #[inline(always)] // into `pulp`'s `vectorize` (Chapter 11.6)
 #[allow(clippy::inline_always)]
@@ -166,7 +206,11 @@ fn trsm_plain<U: ColumnUpdate>(
 
 impl DenseKernel<DoubleDouble> for DdDense {
     fn potrf(&self, a: &mut DenseBlock<DoubleDouble>) -> Result<(), DenseError> {
-        NaiveDense.potrf(a)
+        let Some(n) = square(a) else {
+            return Err(DenseError::Dimension);
+        };
+        dispatch!(|lanes| potrf_columns(lanes, n, a));
+        potrf_columns(Reference, n, a)
     }
 
     fn sytrf(
