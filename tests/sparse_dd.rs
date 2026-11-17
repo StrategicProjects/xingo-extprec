@@ -575,7 +575,16 @@ fn dd_dense_checks_dimensions() {
 #[test]
 fn dd_dense_solves_return_the_bits_of_the_provided_methods() {
     let mut rng = Lcg(0x50_1e);
-    for (nr, nc) in [(1, 1), (2, 2), (3, 2), (5, 5), (9, 4), (13, 6), (40, 11), (130, 33)] {
+    for (nr, nc) in [
+        (1, 1),
+        (2, 2),
+        (3, 2),
+        (5, 5),
+        (9, 4),
+        (13, 6),
+        (40, 11),
+        (130, 33),
+    ] {
         let l = dd_block(nr, nc, &mut rng);
         let y0: Vec<Dd> = (0..nr).map(|_| Dd::from_f64(rng.unit()) / 3.0).collect();
         let mut marks = vec![Vec::new(), vec![false; nc]];
@@ -604,7 +613,9 @@ fn dd_dense_solves_return_the_bits_of_the_provided_methods() {
 }
 
 fn bits_of(v: &[Dd]) -> Vec<(u64, u64)> {
-    v.iter().map(|x| (x.hi().to_bits(), x.lo().to_bits())).collect()
+    v.iter()
+        .map(|x| (x.hi().to_bits(), x.lo().to_bits()))
+        .collect()
 }
 
 /// A matrix as coordinates.

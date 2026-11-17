@@ -11,7 +11,7 @@
 //!
 //! Run with `cargo run --release -p xingo-extprec --example dd_profile`.
 
-use xingo_extprec::DoubleDouble;
+use xingo_extprec::{DdDense, DoubleDouble};
 use xingo_sparse::{
     Amd, Col, ColumnRef, CscMatrix, KktForm, KktSolver, Lu, LuError, LuFactor, LuOptions,
     RefactorReason, Refinement, Regularization, SparseVec, SupernodalLdl, SupernodalOptions,
@@ -382,6 +382,7 @@ fn update_row(n: usize, weak: f64, stability_tol: f64, label: &str) {
     let (mut applied, mut unstable, mut singular, mut other) = (0, 0, 0, 0);
     let mut ratios: Vec<f64> = Vec::new();
     let mut worst = 0.0_f64;
+    let mut max_mu = 0.0_f64;
     for k in 0..exchanges {
         let r = (7 * k + 3) % n;
         let entering = ColumnRef::Structural(Col::from_usize(n + k));
@@ -402,6 +403,7 @@ fn update_row(n: usize, weak: f64, stability_tol: f64, label: &str) {
                 let q0 = ftran_quality(&mut fresh, &heading, &a);
                 ratios.push(q / q0.max(1.0));
                 worst = worst.max(q);
+                max_mu = max_mu.max(lu.update_stats().max_multiplier);
             }
             Ok(UpdateOutcome::RefactorNeeded(RefactorReason::Unstable)) => {
                 unstable += 1;
@@ -433,7 +435,7 @@ fn update_row(n: usize, weak: f64, stability_tol: f64, label: &str) {
         (ratios[ratios.len() / 2], ratios[ratios.len() - 1])
     };
     println!(
-        "| {weak:.0e} | {label} | {applied} | {unstable} | {singular} | {other} | {med:.1e} | {max:.1e} | {worst:.1e} |"
+        "| {weak:.0e} | {label} | {applied} | {unstable} | {singular} | {other} | {med:.1e} | {max:.1e} | {worst:.1e} | {max_mu:.1e} |"
     );
 }
 
@@ -487,8 +489,17 @@ fn kkt_profiles() -> Vec<KktProfile> {
         pivot_threshold: d.pivot_threshold * EPS_RATIO.sqrt(),
         ..d
     };
-    let reg = Regularization::<Dd>::default();
-    // ρδ = 10⁻¹⁴ ≈ 45 ε_f64 becomes ≈ 45 ε_dd; each shift scaled by √(ε_dd/ε_f64).
+    // The `f64` defaults of Chapter 5.14 (what `Regularization::default()`
+    // gave every scalar until `xingo-sparse` 0.4.0).
+    let reg = Regularization::<Dd> {
+        primal: Dd::from_f64(1e-6),
+        dual: Dd::from_f64(1e-8),
+        pivot_tol: Some(Dd::from_f64(1e-13)),
+        bump: Dd::from_f64(2e-7),
+        ..Regularization::<Dd>::default()
+    };
+    // ρδ = 10⁻¹⁴ ≈ 45 ε_f64 becomes ≈ 45 ε_dd; each shift scaled by √(ε_dd/ε_f64):
+    // since 0.4.0 this is `Regularization::<Dd>::default()` (checked).
     let s = EPS_RATIO.sqrt();
     let reg_dd = Regularization::<Dd> {
         primal: Dd::from_f64(1e-6 * s),
@@ -497,6 +508,7 @@ fn kkt_profiles() -> Vec<KktProfile> {
         bump: Dd::from_f64(2e-7 * s),
         ..reg
     };
+    assert_eq!(reg_dd, Regularization::<Dd>::default());
     vec![
         KktProfile {
             label: "f64 reg., target 1e-12",
@@ -582,6 +594,46 @@ fn kkt_row(name: &str, n: usize, form: KktForm, entries: &[(usize, usize, f64)])
     }
 }
 
+/// The KKT systems with the defaults of `xingo-sparse` 0.4.0 for the
+/// scalar (task L1.8): `SupernodalLdl<DoubleDouble, DdDense>` with
+/// `Regularization::default()` and `Refinement::default()` (ten steps,
+/// target `10⁻¹² · 2⁻⁵²`), nothing set by hand.
+fn kkt_defaults_row(name: &str, n: usize, form: KktForm, entries: &[(usize, usize, f64)]) {
+    let k = to_csc(n, n, entries);
+    let b: Vec<Dd> = (0..n)
+        .map(|i| Dd::from_f64(f64::from(u32::try_from((i * 37) % 11).expect("small")) - 5.0))
+        .collect();
+    let solver = SupernodalLdl::<Dd, DdDense>::default();
+    let sym = solver
+        .analyze(&k.pattern(), form, &Amd::default())
+        .expect("symmetric lower pattern");
+    match solver.factorize(&sym, &k, Regularization::default()) {
+        Ok((num, inertia)) => {
+            let mut x0 = b.clone();
+            solver.solve(&num, &mut x0);
+            let r0 = norm_inf(&symmetric_residual(&k, &x0, &b)).to_f64();
+            let mut x = vec![Dd::ZERO; n];
+            let rep = solver.solve_refined(&num, &k, &b, &mut x, Refinement::default());
+            let r = norm_inf(&symmetric_residual(&k, &x, &b)).to_f64();
+            println!(
+                "| {name} | defaults, `DdDense` | {} | {} | {r0:.1e} | {} | {} | {:.1e} | {r:.1e} |",
+                if inertia == form.expected_inertia(n) {
+                    "ok"
+                } else {
+                    "**wrong**"
+                },
+                num.bumped,
+                rep.iters,
+                if rep.converged { "yes" } else { "**no**" },
+                rep.residual.to_f64(),
+            );
+        }
+        Err(e) => {
+            println!("| {name} | defaults, `DdDense` | error {e:?} | — | — | — | — | — | — |");
+        }
+    }
+}
+
 fn main() {
     println!("## LU (`Lu<DoubleDouble>`): factorization and FTRAN under four profiles\n");
     println!(
@@ -644,12 +696,14 @@ fn main() {
          weak`. `ratio` is the scaled residual of an FTRAN with the updated factor over that of \
          a fresh factorization of the same basis (floored at one unit of `ε_dd`), over the \
          applied updates; `worst` is the largest scaled residual (units of `ε_dd`) of an \
-         updated factor.\n"
+         updated factor; `max |μ|` the largest `UpdateStats::max_multiplier` seen. \
+         `unstable` counts the refusals of step U4 and of the multiplier limit of step U4′ \
+         (default `1e6`; the sweep over the limit is `examples/ft_limit.rs`).\n"
     );
     println!(
-        "| weak | `update_stability_tol` | applied | refused: unstable | refused: singular | other | median ratio | max ratio | worst |"
+        "| weak | `update_stability_tol` | applied | refused: unstable | refused: singular | other | median ratio | max ratio | worst | max |μ| |"
     );
-    println!("|---|---|---|---|---|---|---|---|---|");
+    println!("|---|---|---|---|---|---|---|---|---|---|");
     for weak in [1e-2, 1e-6, 1e-10, 1e-14, 1e-18, 1e-22] {
         for (tol, label) in [
             (1e-8, "1e-8 (f64 default)"),
@@ -672,6 +726,34 @@ fn main() {
     println!("|---|---|---|---|---|---|---|---|---|");
     for (m, n, spread) in [(40, 60, 0.0), (40, 60, 4.0), (40, 60, 8.0), (200, 300, 4.0)] {
         kkt_row(
+            &format!("augmented {m}×{n}, spread {spread}"),
+            n + m,
+            KktForm::Augmented {
+                n_primal: n,
+                n_dual: m,
+            },
+            &augmented(m, n, spread),
+        );
+    }
+
+    kkt_defaults_table();
+}
+
+/// The table of `kkt_defaults_row` on the systems of the KKT table.
+fn kkt_defaults_table() {
+    println!("\n## KKT with the defaults for the scalar (`xingo-sparse` 0.4.0)\n");
+    println!(
+        "`SupernodalLdl<DoubleDouble, DdDense>::default()` with `Regularization::default()` and \
+         `Refinement::default()` (ten steps, target `{:.1e}`): the defaults of Chapter 5.14 \
+         scaled by `√ρ` and `ρ`, nothing set by hand.\n",
+        Refinement::<Dd>::default().target_residual.to_f64()
+    );
+    println!(
+        "| matrix | profile | inertia | bumped | plain-solve residual | refinement steps | converged | reported residual | final ‖Kx − b‖∞ |"
+    );
+    println!("|---|---|---|---|---|---|---|---|---|");
+    for (m, n, spread) in [(40, 60, 0.0), (40, 60, 4.0), (40, 60, 8.0), (200, 300, 4.0)] {
+        kkt_defaults_row(
             &format!("augmented {m}×{n}, spread {spread}"),
             n + m,
             KktForm::Augmented {

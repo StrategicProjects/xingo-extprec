@@ -207,7 +207,11 @@ fn potrf_columns<U: ColumnUpdate>(
 
 /// Step K9: the smallest supernode block, in rows, that the solves of
 /// `SupernodalLdl<DoubleDouble, DdDense>` send through K7–K8 (a cost
-/// switch, measured in task L1.8; see `dd_bench`).
+/// switch). Measured in task L1.8 with `dd_bench ldl` (NEON, Apple M2):
+/// `1`, `8` and `32` within the noise of each other on the four systems
+/// (2-D grid simplicial and forced supernodal, 3-D grid, dense 200), all
+/// 1.3–1.8× faster than the generic loops; `8` keeps the gather out of
+/// the smallest blocks.
 const SOLVE_MIN_ROWS: usize = 8;
 
 /// `o = j + 1 + [skip_j]` of Algorithms V and W of Chapter 5.16.
