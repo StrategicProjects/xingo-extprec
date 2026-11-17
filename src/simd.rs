@@ -46,12 +46,13 @@
 //!     compute the four elements of the chunk with the scalar operations
 //!     of Chapter 11.2 (from the operands, which were not yet
 //!     overwritten). The tail is scalar.
-//! W2. \[`dot`, `dot_mixed`.\] `a ← 0` (a double-double quad); for each
-//!     chunk `a ← a ⊕ (x ⊗ y)` on quads. If some lane of `a_h` or `a_ℓ` is
-//!     not finite, discard everything and run the reference kernel on the
-//!     whole input. Otherwise store `a` as the four accumulators of step
-//!     B1 and finish in scalar code: the tail, then `((a_0 ⊕ a_1) ⊕ a_2) ⊕
-//!     a_3`.
+//! W2. \[`dot`, `dot_mixed`, `dot4`.\] `a ← 0` (a double-double quad);
+//!     for each chunk `a ← a ⊕ (x ⊗ y)` on quads. If some lane of `a_h` or
+//!     `a_ℓ` is not finite, discard everything and run the reference kernel
+//!     on the whole input. Otherwise store `a` as the four accumulators of
+//!     step B1 (B4) and finish in scalar code: the tail, then `((a_0 ⊕ a_1)
+//!     ⊕ a_2) ⊕ a_3` (B4: the fifth accumulator over the tail and `((a_0 ⊕
+//!     a_1) ⊕ (a_2 ⊕ a_3)) ⊕ t`).
 //!
 //! **Why step E can be left out (the proof of K1 for Algorithm W).** The
 //! scalar operations end in step E, which is the identity when the
@@ -462,6 +463,29 @@ pub(crate) fn dot<L: Lanes>(l: L, x: &[DoubleDouble], y: &[DoubleDouble]) -> Dou
         acc[j] += xi * yi;
     }
     ((acc[0] + acc[1]) + acc[2]) + acc[3]
+}
+
+/// Step W2 for `dot4` (step B4 of Chapter 11.5): the chunks on quads, the
+/// tail and the pairwise combination in scalar code, as the reference.
+#[inline(always)]
+#[cfg_attr(not(feature = "sparse"), allow(dead_code))]
+pub(crate) fn dot4<L: Lanes>(l: L, x: &[DoubleDouble], y: &[DoubleDouble]) -> DoubleDouble {
+    debug_assert_eq!(x.len(), y.len(), "dot4: the lengths differ");
+    let (cx, tx) = x.as_chunks::<LANES>();
+    let (cy, ty) = y.as_chunks::<LANES>();
+    let mut a = splat_dd(l, DoubleDouble::ZERO);
+    for (p, q) in cx.iter().zip(cy) {
+        a = add_q(l, a, mul_q(l, load_dd(l, p), load_dd(l, q)));
+    }
+    if !l.all_finite(a.0, a.1) {
+        return reference::dot4(x, y);
+    }
+    let acc = store_dd(l, a);
+    let mut t = DoubleDouble::ZERO;
+    for (&p, &q) in tx.iter().zip(ty) {
+        t += p * q;
+    }
+    (acc[0] + acc[1]) + (acc[2] + acc[3]) + t
 }
 
 /// Step W2 for `dot_mixed`.

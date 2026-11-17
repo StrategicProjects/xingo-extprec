@@ -58,6 +58,15 @@
 //!     `BLOCK_ROWS` rows and `BLOCK_K` columns of `A`, the scheme of
 //!     `xingo_sparse::NaiveDense` (Chapter 5.16).
 //!
+//! B4. \[`dot4`, the step D of Algorithm W of Chapter 5.16 of
+//!     `xingo-sparse`; crate-private, for the solves of Chapter 11.7.\]
+//!     `a_k ← 0`; for the first `4⌊n/4⌋` elements `a_k ← a_k ⊕ (x_i ⊗
+//!     y_i)` with `k = i mod W`; `t ← 0` and `t ← t ⊕ (x_i ⊗ y_i)` for the
+//!     rest, in order; return `((a_0 ⊕ a_1) ⊕ (a_2 ⊕ a_3)) ⊕ t`. It differs
+//!     from B1 in the tail (one more accumulator instead of the lanes) and
+//!     in the combination (pairwise), the order of the generic solve of
+//!     `xingo-sparse`, whose bits it must return.
+//!
 //! **Algorithm X (dispatch).** For a call of a kernel `κ`:
 //!
 //! X1. \[Feature.\] Without the feature `simd`, run the reference `κ`.
@@ -311,6 +320,24 @@ pub(crate) mod reference {
             acc[i % LANES] += xi * yi;
         }
         ((acc[0] + acc[1]) + acc[2]) + acc[3]
+    }
+
+    /// Step B4.
+    #[cfg_attr(not(feature = "sparse"), allow(dead_code))]
+    pub(crate) fn dot4(x: &[DoubleDouble], y: &[DoubleDouble]) -> DoubleDouble {
+        let mut acc = [DoubleDouble::ZERO; LANES];
+        let (cx, tx) = x.as_chunks::<LANES>();
+        let (cy, ty) = y.as_chunks::<LANES>();
+        for (p, q) in cx.iter().zip(cy) {
+            for k in 0..LANES {
+                acc[k] += p[k] * q[k];
+            }
+        }
+        let mut t = DoubleDouble::ZERO;
+        for (&p, &q) in tx.iter().zip(ty) {
+            t += p * q;
+        }
+        (acc[0] + acc[1]) + (acc[2] + acc[3]) + t
     }
 
     /// Step B1, `f64` `y`.
@@ -573,6 +600,16 @@ mod tests {
         assert_eq!(reference::dot(&x, &y), lanes(&|i| x[i] * y[i]));
         assert_eq!(dot(&x, &y), lanes(&|i| x[i] * y[i]));
         assert_eq!(dot_mixed(&x, &yf), lanes(&|i| x[i] * yf[i]));
+        // B4: lanes over the first four, a fifth accumulator, pairwise.
+        let mut a = [Dd::ZERO; 4];
+        for i in 0..4 {
+            a[i] += x[i] * y[i];
+        }
+        let mut t = Dd::ZERO;
+        for i in 4..7 {
+            t += x[i] * y[i];
+        }
+        assert_eq!(reference::dot4(&x, &y), ((a[0] + a[1]) + (a[2] + a[3])) + t);
         // B2.
         let alpha = Dd::ONE / 7.0;
         let mut z = y.clone();
@@ -696,7 +733,14 @@ mod tests {
         a.len() == b.len() && a.iter().zip(b).all(|(&p, &q)| same_dd(p, q))
     }
 
-    /// (K1) for the six vector kernels on one data set; the name of the
+    /// Step B4 through the dispatch (the solves of Chapter 11.7 call it
+    /// inside their own).
+    fn dot4(x: &[Dd], y: &[Dd]) -> Dd {
+        dispatch!(|lanes| crate::simd::dot4(lanes, x, y));
+        reference::dot4(x, y)
+    }
+
+    /// (K1) for the seven vector kernels on one data set; the name of the
     /// first kernel that differs.
     fn k1_vectors(kind: u8, n: usize, seed: u64) -> Result<(), String> {
         let mut rng = Rng(seed | 1);
@@ -721,6 +765,9 @@ mod tests {
         }
         if !same_dd(dot_mixed(&p, &x), reference::dot_mixed(&p, &x)) {
             return fail("dot_mixed");
+        }
+        if !same_dd(dot4(&p, &q), reference::dot4(&p, &q)) {
+            return fail("dot4");
         }
         let (mut z, mut z0) = (q.clone(), q.clone());
         axpy(alpha, &p, &mut z);
@@ -833,6 +880,7 @@ mod tests {
                 }
                 assert!(same_dd(dot(&p, &q), reference::dot(&p, &q)));
                 assert!(same_dd(dot(&p, &p), reference::dot(&p, &p)));
+                assert!(same_dd(dot4(&p, &q), reference::dot4(&p, &q)));
                 let y: Vec<f64> = q.iter().map(|d| d.hi() * 1e150).collect();
                 assert!(same_dd(dot_mixed(&p, &y), reference::dot_mixed(&p, &y)));
                 let x: Vec<f64> = p.iter().map(|d| d.hi()).collect();

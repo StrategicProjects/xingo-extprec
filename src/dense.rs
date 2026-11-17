@@ -38,13 +38,26 @@
 //!     factorization is not where the supernodal factorization spends its
 //!     time.
 //!
+//! K7. \[`solve_unit_lower`, Algorithm V of Chapter 5.16.\] For `j = 0,
+//!     …, n_c − 1`: the column update of `y[o..]` with `a = L[o.., j]` and
+//!     `t = y_j`.
+//! K8. \[`solve_unit_lower_t`, Algorithm W.\] For `j = n_c − 1, …, 0`:
+//!     `y_j ← y_j ⊖ (D(L[o..n_c, j], y[o..n_c]) ⊕ D(L[n_c.., j],
+//!     y[n_c..]))`, with `D` the kernel `dot4` of Chapter 11.5 (step B4)
+//!     on SIMD registers (step W2 of Chapter 11.6).
+//! K9. \[`solve_min_rows`.\] [`SOLVE_MIN_ROWS`]: the supernodes of
+//!     `SupernodalLdl` with at least that many rows are solved through
+//!     K7–K8 (step S0′ of Chapter 5.17), the others by the generic loops.
+//!     A cost switch (invariant (D5) of Chapter 5.16): the bits are the
+//!     same either way.
+//!
 //! *Task L1.8.* Until `xingo-sparse` 0.3.x the generic `potrf` summed each
 //! entry along a row of `L` (`Σ_k l_ik l_jk`, left to right, subtracted
 //! once), which lanes would reorder, so it was `NaiveDense`'s here too;
 //! 0.4.0 subtracts term by term down a column, the statement of K1–K4, and
 //! K5 vectorizes it with the same bits.
 //!
-//! K1–K5 are the loops of `NaiveDense` (Chapter 5.16, "Loop order"), which
+//! K1–K5, K7 are the loops of `NaiveDense` (Chapter 5.16, "Loop order"), which
 //! compute each entry as `x ← x − a · t` with the same operands in the
 //! same order; the column update is that statement for a whole column, and
 //! it is bit for bit the scalar one (invariant K1 of Chapter 11.5). The
@@ -70,6 +83,12 @@
 //!      whole factorizations in `tests/sparse_dd.rs`.
 //! (X2) (D3) of Chapter 5.16: the strict upper triangle of a square block
 //!      is untouched.
+//! (X3) *Same bits in the solve* (task L1.8): K7–K8 return the bits of the
+//!      provided `solve_unit_lower`, `solve_unit_lower_t` of
+//!      `DenseKernel` — (D4) of Chapter 5.16 — so `SupernodalLdl` solves to
+//!      the same bits with `DdDense` as with `NaiveDense`, whatever
+//!      [`SOLVE_MIN_ROWS`] is. Tested on blocks and on whole solves in
+//!      `tests/sparse_dd.rs`.
 //!
 //! ## References
 //! Chapter 5.16 of `xingo-sparse` (`DenseKernel`, `NaiveDense`: the loop
@@ -186,6 +205,65 @@ fn potrf_columns<U: ColumnUpdate>(
     Ok(())
 }
 
+/// Step K9: the smallest supernode block, in rows, that the solves of
+/// `SupernodalLdl<DoubleDouble, DdDense>` send through K7–K8 (a cost
+/// switch, measured in task L1.8; see `dd_bench`).
+const SOLVE_MIN_ROWS: usize = 8;
+
+/// `o = j + 1 + [skip_j]` of Algorithms V and W of Chapter 5.16.
+#[inline(always)]
+#[allow(clippy::inline_always)]
+fn solve_offset(skip: &[bool], j: usize) -> usize {
+    j + 1 + usize::from(skip.get(j).copied().unwrap_or(false))
+}
+
+/// The argument checks of K7–K8 (those of the provided methods).
+fn check_solve(l: &DenseBlock<DoubleDouble>, skip: &[bool], y: &[DoubleDouble]) {
+    assert!(
+        is_consistent(l)
+            && l.rows >= l.cols
+            && y.len() == l.rows
+            && (skip.is_empty() || skip.len() == l.cols),
+        "solve_unit_lower: dimensions do not agree"
+    );
+}
+
+/// Step K7.
+#[inline(always)] // into `pulp`'s `vectorize` (Chapter 11.6)
+#[allow(clippy::inline_always)]
+fn solve_forward<U: ColumnUpdate>(
+    update: U,
+    l: &DenseBlock<DoubleDouble>,
+    skip: &[bool],
+    y: &mut [DoubleDouble],
+) {
+    let nr = l.rows;
+    for j in 0..l.cols {
+        let o = solve_offset(skip, j);
+        let t = y[j];
+        update.column_sub(&mut y[o..], &l.data[j * nr + o..(j + 1) * nr], t);
+    }
+}
+
+/// Step K8, with the kernel `dot` of step B4.
+#[inline(always)] // into `pulp`'s `vectorize` (Chapter 11.6)
+#[allow(clippy::inline_always)]
+fn solve_backward(
+    l: &DenseBlock<DoubleDouble>,
+    skip: &[bool],
+    y: &mut [DoubleDouble],
+    dot: impl Fn(&[DoubleDouble], &[DoubleDouble]) -> DoubleDouble,
+) {
+    let (nr, nc) = (l.rows, l.cols);
+    for j in (0..nc).rev() {
+        let o = solve_offset(skip, j);
+        let col = &l.data[j * nr..(j + 1) * nr];
+        let a = dot(&col[o..nc], &y[o..nc]);
+        let b = dot(&col[nc..], &y[nc..]);
+        y[j] -= a + b;
+    }
+}
+
 /// Step K4.
 #[inline(always)] // into `pulp`'s `vectorize` (Chapter 11.6)
 #[allow(clippy::inline_always)]
@@ -277,5 +355,31 @@ impl DenseKernel<DoubleDouble> for DdDense {
 
     fn name(&self) -> &'static str {
         "dd"
+    }
+
+    fn solve_min_rows(&self) -> usize {
+        SOLVE_MIN_ROWS
+    }
+
+    fn solve_unit_lower(
+        &self,
+        l: &DenseBlock<DoubleDouble>,
+        skip: &[bool],
+        y: &mut [DoubleDouble],
+    ) {
+        check_solve(l, skip, y);
+        dispatch!(|lanes| solve_forward(lanes, l, skip, y));
+        solve_forward(Reference, l, skip, y);
+    }
+
+    fn solve_unit_lower_t(
+        &self,
+        l: &DenseBlock<DoubleDouble>,
+        skip: &[bool],
+        y: &mut [DoubleDouble],
+    ) {
+        check_solve(l, skip, y);
+        dispatch!(|lanes| solve_backward(l, skip, y, |a, b| crate::simd::dot4(lanes, a, b)));
+        solve_backward(l, skip, y, crate::kernels::reference::dot4);
     }
 }
