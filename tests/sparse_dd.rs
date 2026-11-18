@@ -6,7 +6,7 @@
 //! Every check is written once, generic in the scalar `T: Real`, and run in
 //! `f64` and in `DoubleDouble` with the same tolerance *in units of
 //! `T::EPSILON`* — "the LU instantiated in dd passes the same tests as in
-//! f64" (PLAN.md, L2.2). In double-double the LU is `Lu::default()`,
+//! f64" (the solver's plan, task L2.2). In double-double the LU is `Lu::default()`,
 //! whose options are Rule P of `xingo-sparse` (`LuOptions::for_scalar`,
 //! task L1.8): nothing is set by hand (see `new_lu`). The residuals are
 //! computed in `T` itself; a second group of tests measures the `f64`

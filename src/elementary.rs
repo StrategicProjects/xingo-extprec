@@ -308,7 +308,7 @@
 //! The contract proposed the growth coefficient `8`; the proof gives
 //! `10.63`, because the logarithm's own bound, `6.63u²`, is multiplied by
 //! `G` as well as the product's `4u²`. The declared row therefore has `11`
-//! (ratified by the owner, 2026-11-18, D-0122).
+//! (ratified 2026-11-18, decision log D-0122).
 //!
 //! ## Algorithm R (argument reduction: Payne–Hanek in integers)
 //! Input `x ∈ dd`, finite, `x ≥ 0` (the callers use the parity of the
@@ -587,6 +587,7 @@ use tables::{
 /// `|z − f(x)| ≤ (units_of_u2 + growth_units_of_u2 · G) u² |f(x)| + absolute`,
 /// for results of magnitude in [2⁻⁹⁶⁸, Ω] (below: `+ η`).
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct FunctionBound {
     /// The function, as named in Rust (`"exp"`, `"powi"`, …).
     pub function: &'static str,

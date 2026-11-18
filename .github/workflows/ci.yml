@@ -1,0 +1,79 @@
+# CI of the stand-alone mirror of `xingo-extprec` (the crate is developed in
+# the Xingó monorepo, https://github.com/StrategicProjects/xingo, whose CI
+# runs the same checks inside the workspace; this file is excluded from the
+# published package). In the mirror `xingo-sparse` comes from crates.io.
+# `ubuntu-latest` is x86_64: the first run of the AVX2 kernels and of the
+# golden bits of the elementary functions off aarch64.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+# Read-only token; third-party actions are pinned to a commit (the tag is
+# in the comment).
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  PROPTEST_DISABLE_FAILURE_PERSISTENCE: 1
+
+jobs:
+  check:
+    name: fmt + clippy + test + docs (${{ matrix.rust }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, "1.90"] # stable and MSRV
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy (default, no default features, each feature alone)
+        run: |
+          cargo clippy --all-targets -- -D warnings
+          cargo clippy --all-targets --no-default-features -- -D warnings
+          cargo clippy --all-targets --no-default-features --features sparse -- -D warnings
+          cargo clippy --all-targets --no-default-features --features simd -- -D warnings
+      - name: Test (default, no default features, each feature alone)
+        run: |
+          cargo test
+          cargo test --no-default-features
+          cargo test --no-default-features --features sparse
+          cargo test --no-default-features --features simd
+      - name: Test (release)
+        run: cargo test --release
+      # The public API, and the whole book as docs.rs and Pages build it
+      # (`--document-private-items`), with and without the default features.
+      - name: Docs (default, no default features, all features; private items)
+        run: |
+          cargo doc --no-deps
+          cargo doc --no-deps --no-default-features
+          cargo doc --no-deps --all-features
+          cargo doc --no-deps --all-features --document-private-items
+          cargo doc --no-deps --no-default-features --document-private-items
+        env:
+          RUSTDOCFLAGS: -D warnings
+      # The examples print the Markdown tables of the measurements (they need
+      # the feature `sparse`); release, because `ft_limit` takes about 90 s
+      # there. The second column of `dd_bench`'s output is the SIMD backend
+      # of this runner (`avx2` or `scalar`).
+      - name: Examples
+        run: |
+          cargo build --examples
+          cargo build --examples --no-default-features --features sparse
+          cargo run --release --example dd_bench k8
+          cargo run --release --example dd_profile
+          cargo run --release --example ft_limit
+      - name: Package (dry run)
+        run: cargo publish --dry-run

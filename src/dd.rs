@@ -213,13 +213,17 @@ pub struct DoubleDouble {
 }
 
 /// The proven relative error bound of one operation of [`DoubleDouble`],
-/// as a multiple of `u² = 2⁻¹⁰⁶` (first-order term; the table of the
-/// chapter has the full expressions).
+/// as a multiple of `u² = 2⁻¹⁰⁶`: an `f64` that is **at least** the full
+/// proven expression of the chapter's table (rounded up where the
+/// expression has higher-order terms), so that `units_of_u2 · u²` is itself
+/// a rigorous bound.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct ErrorBound {
     /// The operation, as written in the chapter's table (`"dd + dd"`, …).
     pub operation: &'static str,
-    /// `c` in "relative error `≤ c u²`".
+    /// `c` in "relative error `≤ c u²`", with `c` at least the proven
+    /// expression (see [`DoubleDouble::ERROR_BOUNDS`]).
     pub units_of_u2: f64,
 }
 
@@ -391,17 +395,34 @@ impl DoubleDouble {
         hi: f64::from_bits(0x4002_6bb1_bbb5_5516),
         lo: f64::from_bits(0xbcaf_48ad_494e_a3e9),
     };
-    /// The bounds of the chapter's table, for the tests of L2.2 (question
-    /// E6) and for callers that propagate errors. The subtractions have
-    /// the bounds of the additions; `1 / dd` is `dd / dd`.
+    /// The bounds of the chapter's table, for the tests and for callers
+    /// that propagate errors. The subtractions have the bounds of the
+    /// additions; `1 / dd` is `dd / dd`. Each `units_of_u2` is an `f64` at
+    /// least the proven expression, with `u = 2⁻⁵³`:
+    ///
+    /// | operation | proven bound | `units_of_u2` |
+    /// |---|---|---|
+    /// | `dd + f64` | `2u²/(1 − 2u)` | `2 + 2⁻⁵⁰` (the expression rounded up) |
+    /// | `dd + dd` | `3u²/(1 − 4u)` | `3 + 2⁻⁴⁹` (rounded up) |
+    /// | `dd · f64` | `2u²` | `2` (exact) |
+    /// | `dd · dd` | `4u²` | `4` (exact) |
+    /// | `dd²` | `3u²` | `3` (exact) |
+    /// | `dd / f64` | `3u²` | `3` (exact) |
+    /// | `dd / dd` | `15u² + 56u³` | `15 + 2⁻⁴⁷` (rounded up) |
+    /// | `√dd` | `(25/8) u²` | `3.125` (exact) |
+    ///
+    /// The test `error_bounds_dominate_the_proven_expressions` checks each
+    /// row in exact rational arithmetic.
     pub const ERROR_BOUNDS: &'static [ErrorBound] = &[
         ErrorBound {
             operation: "dd + f64",
-            units_of_u2: 2.0,
+            // 2/(1 − 2u) = 2 + 2⁻⁵¹ + …, rounded up: 2 + 2⁻⁵⁰.
+            units_of_u2: f64::from_bits(0x4000_0000_0000_0002),
         },
         ErrorBound {
             operation: "dd + dd",
-            units_of_u2: 3.0,
+            // 3/(1 − 4u) = 3 + 3·2⁻⁵¹ + …, rounded up: 3 + 2⁻⁴⁹.
+            units_of_u2: f64::from_bits(0x4008_0000_0000_0004),
         },
         ErrorBound {
             operation: "dd · f64",
@@ -421,7 +442,8 @@ impl DoubleDouble {
         },
         ErrorBound {
             operation: "dd / dd",
-            units_of_u2: 15.0,
+            // 15 + 56u = 15 + 3.5·2⁻⁴⁹, rounded up: 15 + 2⁻⁴⁷.
+            units_of_u2: f64::from_bits(0x402e_0000_0000_0004),
         },
         ErrorBound {
             operation: "√dd",
@@ -458,6 +480,10 @@ impl DoubleDouble {
 
     /// The pair `(hi, lo)` as given, **requires** it normalized (D1); a
     /// `debug_assert!`. For deserialization and tests.
+    ///
+    /// The requirement is unchecked in release builds, and every bound of
+    /// this chapter assumes it: use [`DoubleDouble::from_sum`] for an
+    /// arbitrary pair.
     #[inline]
     #[must_use]
     pub fn from_parts(hi: f64, lo: f64) -> Self {

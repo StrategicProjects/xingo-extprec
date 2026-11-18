@@ -379,6 +379,13 @@ fn same_class_as_f64(fun: &Fun) {
     for x in special_arguments() {
         let z = (fun.dd)(d(x));
         assert!(z.check_invariants().is_ok(), "{}({x:e}): {z:?}", fun.name);
+        if let Some(want) = class_where_std_varies(fun.name, x) {
+            // The reference is the mathematics, not `f64`: the class, and
+            // the value within the declared bound against the oracle.
+            assert_eq!(class(z.hi()), want, "{}({x:e}) = {z:?}", fun.name);
+            check(fun, d(x));
+            continue;
+        }
         assert_eq!(
             class(z.hi()),
             class((fun.f64)(x)),
@@ -386,6 +393,25 @@ fn same_class_as_f64(fun: &Fun) {
             fun.name,
             (fun.f64)(x)
         );
+    }
+}
+
+/// The special arguments at which the `f64` function of `std` is not a
+/// valid reference because its result depends on the version of the
+/// standard library, with the class of the correct result. Up to at least
+/// Rust 1.90, `f64::asinh(±Ω)` and `f64::acosh(Ω)` return `±∞` (an
+/// intermediate `x² + 1` overflows); later versions return `±710.4758…`,
+/// the correctly rounded `ln(2Ω)`, which is what `DoubleDouble` returns.
+/// Found by running this file on the MSRV (1.90) and on 1.100 and
+/// comparing every special argument of `special_arguments()` for the 21
+/// one-argument functions: these three are the only differences.
+fn class_where_std_varies(name: &str, x: f64) -> Option<Class> {
+    if (name == "asinh" || name == "acosh") && x == f64::MAX {
+        Some(Class::Pos)
+    } else if name == "asinh" && x == -f64::MAX {
+        Some(Class::Neg)
+    } else {
+        None
     }
 }
 

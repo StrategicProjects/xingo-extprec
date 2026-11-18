@@ -1,9 +1,10 @@
 //! # Chapter 11 — `xingo-extprec`: extended precision and rigorous enclosures
 //!
-//! **Status: complete for v0.1 (L2.2a, L2.2b, L2.3 and L2.4).** The
-//! contract was approved by André on 2026-11-15 (PLAN.md trilha L2.1, D-0081 and
-//! D-0109; questions E1–E8 below all answered "yes" as proposed) and lives
-//! in `contracts/xingo-extprec/`. Implemented here: the error-free
+//! **Status: complete for v0.1.** The contract of the crate was ratified on
+//! 2026-11-15 (decision log of the Xingó solver, D-0081 and D-0109;
+//! questions E1–E8 below all answered "yes" as proposed). Labels such as
+//! L2.2a are tasks of the solver's plan (see "History" at the end), and
+//! D-xxxx are entries of its decision log. Implemented here: the error-free
 //! transformations (Chapter 11.1), [`DoubleDouble`] with `impl
 //! xingo_sparse::Real` (Chapter 11.2), its decimal conversions (Chapters
 //! 11.3 and 11.4), the kernels — definitions, scalar reference and
@@ -13,7 +14,7 @@
 //! 11.9), the module [`verify`] — rigorous residuals and polishing
 //! (Chapter 11.10) — and the elementary functions of [`DoubleDouble`] with
 //! proven bounds, [`DoubleDouble::FUNCTION_BOUNDS`] (Chapter 11.11; the
-//! contract of L2.4 is D-0121). The sections "Corrections to the approved
+//! contract of L2.4 is decision log D-0121). The sections "Corrections to the approved
 //! contract" list what the implementation found wrong in it.
 //!
 //! ## Purpose
@@ -21,8 +22,8 @@
 //! basis solve `B x = b` on an ill-conditioned basis returns an `x` whose
 //! residual, recomputed in `f64`, is itself rounding noise; a feasibility
 //! claim `|a_iᵀx − b_i| ≤ 10⁻⁹` checked in the arithmetic that produced `x`
-//! proves nothing. Between `f64` and exact rational arithmetic (PLAN §8,
-//! `--exact-check`) there is a cheap intermediate step with two parts:
+//! proves nothing. Between `f64` and exact rational arithmetic (the
+//! solver's `--exact-check`) there is a cheap intermediate step with two parts:
 //!
 //! 1. **more precision** — double-double numbers (an unevaluated sum of two
 //!    `f64`, about 32 decimal digits) at 10–25 flops per operation, in
@@ -117,8 +118,8 @@
 //! opposite signs (JMP §3), and a residual `b − A x` is exactly that case.
 //! No sloppy variant is exposed (question E5).
 //!
-//! **Consequence for the plan.** L2.2's acceptance criterion reads "erro ≤
-//! 2⁻¹⁰⁴ relativo nos kernels". `2⁻¹⁰⁴ = 4 u²` holds for `+`, `−`, `·` and
+//! **Consequence for the plan.** L2.2's acceptance criterion read "a
+//! relative error of at most 2⁻¹⁰⁴ in the kernels". `2⁻¹⁰⁴ = 4 u²` holds for `+`, `−`, `·` and
 //! `√`, **not for the division**: DWDivDW2 is proven to `15u² + 56u³`
 //! (`3,75 · 2⁻¹⁰⁴`), and the best proven bound of a double-word division
 //! is `9,8 u²` (DWDivDW3, JMP Alg. 18: 31 flops instead of 18, through a
@@ -127,7 +128,7 @@
 //! *those* (question E6).
 //!
 //! **Why not DWDivDW3.** It was implemented and measured (2026-11-15), and
-//! the owner kept DWDivDW2. DWDivDW3 computes `x · (1/y)`, and a rounded
+//! DWDivDW2 was kept (ratified; decision log D-0109). DWDivDW3 computes `x · (1/y)`, and a rounded
 //! reciprocal loses the *exact* quotients: `53/53` came out as `1 −
 //! 6,2 · 10⁻³³`; of the 39 601 quotients `(q y)/y` with integers `1 ≤ q, y
 //! < 200`, 4 600 were not `q`; `(a b)/b ≠ a` for about 30 % of random
@@ -172,7 +173,7 @@
 //! (C1) The enclosures are statements about the **`f64` model**: the
 //!      matrix and vectors as stored. That a decimal `0.1` in an MPS file
 //!      became the `f64` nearest to it is outside this crate (the rational
-//!      check of PLAN §8 starts from the decimal text).
+//!      check of the solver's `--exact-check` starts from the decimal text).
 //! (C2) An enclosure is rigorous under IEEE 754 binary64 arithmetic with
 //!      round-to-nearest and a correctly rounded `fma` — what Rust
 //!      guarantees on every tier-1 target (`f64::mul_add` falls back to a
@@ -271,7 +272,9 @@
 //!   instead of a single `2⁻¹⁰⁴`. *Proposed: yes.*
 //! * **E7** — no elementary functions beyond `sqrt`; `Display`/`FromStr`
 //!   are faithful (error `≤ 1` unit of the 32nd digit), not correctly
-//!   rounded. *Proposed: yes.*
+//!   rounded. *Proposed: yes.* **Superseded:** the elementary functions
+//!   were added by task L2.4 (decision log D-0121, Chapter 11.11), and the
+//!   conversions are correctly rounded (L2.2a, below).
 //! * **E8** — `dashu` as the dev-only exact oracle; `pulp` (MIT) as the
 //!   only runtime dependency besides `xingo-sparse`. *Proposed: yes.*
 //!
@@ -312,13 +315,13 @@
 //!   back to the same value" does not exist in general — a double-double
 //!   is not a 106-bit number (its trailing component may lie arbitrarily
 //!   far below the leading one). The default output is the value correctly
-//!   rounded to **31** digits (the owner's choice, 2026-11-15, instead of
-//!   the contract's 32): a decimal of at most 31 digits that was read
+//!   rounded to **31** digits (ratified 2026-11-15, decision log D-0109,
+//!   instead of the contract's 32): a decimal of at most 31 digits that was read
 //!   comes back as the same text, which 32 digits cannot give (`10³¹ <
 //!   2¹⁰⁶ < 10³²`). `{:.N}` and `{:.Ne}` with `N` large give the exact
 //!   expansion (Chapter 11.4, invariant P3). All conversions are correctly
 //!   rounded, which is stronger than the "faithful" of question E7.
-//! * Added to the contract's surface, ratified by the owner: `impl
+//! * Added to the contract's surface, ratified (decision log D-0109): `impl
 //!   LowerExp for DoubleDouble` (`{:e}`, as for `f64`), `impl Display` and
 //!   `impl Error` for [`ParseDoubleDoubleError`], and the row `"dd²"` of
 //!   `ERROR_BOUNDS`.
@@ -328,7 +331,7 @@
 //!   4` lanes on every target, which is the width of AVX2; an eight-lane
 //!   accumulation would be a different kernel (Chapter 11.5, Algorithm X).
 //!   The backends are `"scalar"`, `"neon"` and `"avx2"`
-//!   (ratified by the owner, 2026-11-15).
+//!   (ratified 2026-11-15, decision log D-0111).
 //! * Invariant (K1) holds for every input, finite or not, with the one
 //!   reservation about the bits of a NaN stated above.
 //! * [`DdDense`]: the contract has the triangular solves "those of
@@ -338,8 +341,8 @@
 //!   (its `B` is transposed with respect to the trait's). The results are
 //!   those of `NaiveDense` bit for bit either way (Chapter 11.7).
 //! * Not added to the contract's surface: the `LuOptions` profile for
-//!   `Lu<DoubleDouble>` (Chapter 11.8). The owner's choice (2026-11-15,
-//!   D-0111) is a constructor generic in the scalar in `xingo-sparse`; it
+//!   `Lu<DoubleDouble>` (Chapter 11.8). The choice ratified on 2026-11-15
+//!   (decision log D-0111) is a constructor generic in the scalar in `xingo-sparse`; it
 //!   exists since `xingo-sparse` 0.4.0 (`LuOptions::for_scalar::<T>()`,
 //!   task L1.8, D-0113), and the hidden, provisional constructor this
 //!   crate carried until then is gone.
@@ -371,7 +374,7 @@
 //! * **`Display`.** Without a precision the endpoints are printed as
 //!   `f64` (shortest round trip: the text identifies the interval); with a
 //!   precision they are rounded **outward**, so the printed pair contains
-//!   the interval (Chapter 11.9, Algorithm D; the owner's choice).
+//!   the interval (Chapter 11.9, Algorithm D; ratified, decision log D-0114).
 //! * **Algorithm V for a double-double `x`.** The contract announced "two
 //!   `two_prod` per entry, the bound gains the second-order terms". No new
 //!   bound is needed: `Σ a_ij (h_j + ℓ_j) − b_i` *is* a dot product of
@@ -383,8 +386,8 @@
 //! * **Algorithm P, convergence.** The contract stopped at `‖r‖∞ ≤ τ
 //!   (‖A‖∞‖x‖∞ + ‖b‖∞)`. On the Netlib bases that global scale declared
 //!   badly scaled models converged with a true residual far above
-//!   double-double level, so the test is now **per row** (the owner's
-//!   choice, 2026-11-16): `|r_i| ≤ τ (Σ_j |a_ij x_j| + |b_i|)` in every
+//!   double-double level, so the test is now **per row** (ratified
+//!   2026-11-16, decision log D-0114): `|r_i| ≤ τ (Σ_j |a_ij x_j| + |b_i|)` in every
 //!   row, its right-hand side rounded against convergence (Chapter 11.10).
 //!   Progress (`PolishOptions::min_progress`) stays in the norm `‖r‖∞`,
 //!   as in the contract: measuring it on the row scale too was tried and
@@ -397,7 +400,8 @@
 //!   **undone**: the residual never increases. `PolishReport::iterations`
 //!   counts the corrections kept. `polish` reports a non-square matrix as
 //!   `VerifyError::Dimension`.
-//! * Added to the contract's surface, ratified by the owner (2026-11-16):
+//! * Added to the contract's surface, ratified 2026-11-16 (decision log
+//!   D-0114):
 //!   `impl Display + Error` for [`InvalidInterval`] and
 //!   `verify::VerifyError`; `impl LowerExp for Interval` (`{:e}`, same
 //!   rounding rule as `Display`); `AddAssign`, `SubAssign`, `MulAssign`,
@@ -434,15 +438,20 @@
 //!   (outward rounding after each operation) rather than on `dashu-ratio`;
 //!   it is equally independent of `dashu-float` and much faster.
 //!
-//! ## Plan
-//! L2.2a: EFTs, `DoubleDouble`, `impl Real`, scalar kernels, proptests
-//! against `dashu`, `Lu<DoubleDouble>` and `SupernodalLdl<DoubleDouble>`
-//! as integration tests. L2.2b: `pulp` kernels, `DdDense`, the profile of
-//! `LuOptions`. L2.3 (this state): `Interval`, `verify`, polishing;
-//! residual certificates on the Netlib bases (an integration test of
-//! `xingo-simplex`, which this crate does not depend on). L2.5:
-//! `--exact-check` in the CLI uses the enclosures before the rational
-//! check. L2.4: the elementary functions (Chapter 11.11).
+//! ## History
+//! The crate was built in the tasks L2.1–L2.5 of the Xingó solver's plan.
+//! L2.1 wrote and ratified the contract (decision log D-0109). L2.2a
+//! implemented the EFTs, `DoubleDouble`, `impl Real`, the scalar kernels,
+//! the proptests against `dashu`, and `Lu<DoubleDouble>` and
+//! `SupernodalLdl<DoubleDouble>` as integration tests. L2.2b added the
+//! `pulp` kernels, `DdDense` and the measurements behind the `LuOptions`
+//! profile for double-double (D-0111). L2.3 added `Interval`, `verify` and
+//! polishing, with residual certificates on the Netlib bases (an
+//! integration test of `xingo-simplex`, which this crate does not depend
+//! on; D-0114). L2.5 used the enclosures in the solver's `--exact-check`,
+//! before its rational check (D-0120). L2.4, last, added the elementary
+//! functions (Chapter 11.11; D-0121 and D-0122). Version 0.1.0 is the
+//! state after all five.
 //!
 //! ## References
 //! Dekker, "A floating-point technique for extending the available
@@ -469,6 +478,17 @@
 //! 4 and 12. IEEE Std 1788-2015. Muller et al., *Handbook of
 //! Floating-Point Arithmetic*, 2nd ed. (2018), ch. 4 and 14.
 
+// Without the feature `sparse`, `verify` and `DdDense` do not exist: the
+// chapter's links to them point to the documentation built with every
+// feature (docs.rs) instead of breaking.
+// (The blank line ends the last paragraph, so that the definitions are read
+// as link references.)
+#![cfg_attr(
+    not(feature = "sparse"),
+    doc = "",
+    doc = "[`verify`]: https://docs.rs/xingo-extprec/latest/xingo_extprec/verify/index.html",
+    doc = "[`DdDense`]: https://docs.rs/xingo-extprec/latest/xingo_extprec/struct.DdDense.html"
+)]
 #![forbid(unsafe_code)]
 
 mod big;
@@ -486,6 +506,14 @@ mod profile;
 mod simd;
 #[cfg(feature = "sparse")]
 pub mod verify;
+
+/// The code blocks of the crate's README, compiled and run as doc-tests
+/// (`cargo test --doc`) so that the README never drifts from the API, as in
+/// `xingo-sparse`. The README is not the root documentation — this chapter
+/// is. Its last example uses `verify`, hence the feature `sparse`.
+#[cfg(all(doctest, feature = "sparse"))]
+#[doc = include_str!("../README.md")]
+pub struct ReadmeDoctests;
 
 pub use dd::{DoubleDouble, ErrorBound};
 pub use decimal::ParseDoubleDoubleError;

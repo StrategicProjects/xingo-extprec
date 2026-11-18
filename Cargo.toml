@@ -1,22 +1,36 @@
 # xingo-extprec (PLAN.md trilha L2, D-0081 and D-0109): publishable on its
-# own, with its own version; its only runtime dependency is `xingo-sparse`
-# (optional, feature `sparse`). As in `xingo-sparse`, nothing is inherited
-# from the workspace (`*.workspace = true`), so that this directory also
-# builds alone. The values must stay equal to the workspace's.
-#
-# `publish = false` until v0.1 is released (after L2.4; the provisional
-# `LuOptions` profile left in L1.8, for `xingo-sparse` 0.4.0's Rule P).
+# own, with its own version; its only runtime dependencies are `xingo-sparse`
+# (optional, feature `sparse`) and `pulp` (optional, feature `simd`). As in
+# `xingo-sparse`, nothing is inherited from the workspace
+# (`*.workspace = true`), so that this directory also builds alone: it is
+# mirrored, by `git subtree split`, to the stand-alone repository below
+# (the routine of D-0097), which Zenodo archives for the DOI. The values
+# must stay equal to the workspace's.
 [package]
 name = "xingo-extprec"
-version = "0.1.0-dev"
+version = "0.1.0"
 description = "Extended precision for numerical linear algebra: double-double arithmetic with proven error bounds, compensated kernels and rigorous interval enclosures of residuals"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/StrategicProjects/xingo"
+repository = "https://github.com/StrategicProjects/xingo-extprec"
+readme = "README.md"
+documentation = "https://docs.rs/xingo-extprec"
 keywords = ["double-double", "interval", "extended-precision", "verified", "linear-algebra"]
 categories = ["mathematics", "science", "algorithms"]
-publish = false
+# The package is the source, its tests, examples, README, CHANGELOG and
+# licenses. The proptest regression seeds are development state (replayed
+# by `cargo test` from a checkout, meaningless to a user of the crate); the
+# workflows are the mirror's CI and Pages; site/ is the mirror's landing page.
+exclude = ["tests/*.proptest-regressions", ".github/", "site/", ".zenodo.json"]
+
+# docs.rs builds with every feature so that `verify` and `DdDense` (feature
+# `sparse`) appear, and with the private items so that every chapter does:
+# most chapters, the proofs of the bounds among them, are the documentation
+# of private modules.
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--document-private-items"]
 
 [features]
 default = ["sparse", "simd"]
@@ -30,7 +44,13 @@ sparse = ["dep:xingo-sparse"]
 simd = ["dep:pulp"]
 
 [dependencies]
-xingo-sparse = { path = "../sparse", version = "0.4.0", default-features = false, optional = true }
+# From the registry, with no `path`: the stand-alone mirror has no
+# `../sparse`. Inside the Xingó monorepo the root `Cargo.toml` patches it to
+# `crates/sparse` (`[patch.crates-io]`), so the workspace builds and tests
+# against the local source; the requirement must keep matching the local
+# version, or the patch goes unused (cargo warns) and the registry's is used.
+# Everything used here exists in the published 0.4.0.
+xingo-sparse = { version = "0.4.0", default-features = false, optional = true }
 # The version the workspace already locks (through faer). `x86-v3` is the
 # AVX2 + FMA token; `x86-v4` (AVX-512) is not used: the kernels have `W = 4`
 # lanes on every target (Chapter 11.5). MIT; its dependencies are MIT,

@@ -1,4 +1,4 @@
-//! The acceptance tests of L2.2a (PLAN.md; D-0109, E6): every operation of
+//! The acceptance tests of L2.2a (the solver's plan; decision log D-0109, E6): every operation of
 //! `DoubleDouble` within its bound of `DoubleDouble::ERROR_BOUNDS`, checked
 //! in exact rational arithmetic (`dashu`), the invariants (D1)–(D5) after
 //! every operation, the error-free transformations exact, the conversions,
@@ -7,9 +7,10 @@
 //!
 //! An `f64` is a dyadic rational, so `q(x)` below is exact and every
 //! comparison of this file is a comparison of rationals: no tolerance
-//! appears. The bound tested for an operation with first-order constant `c`
-//! is `c u² (1 + 8u)`, which covers the full expressions of the chapter's
-//! table (`2u²/(1 − 2u)`, `3u²/(1 − 4u)`, `15u² + 56u³`).
+//! appears. The bound tested for an operation is `c u²` with `c` its
+//! `units_of_u2`, which dominates the full expression of the chapter's
+//! table (`2u²/(1 − 2u)`, `3u²/(1 − 4u)`, `15u² + 56u³`; checked by
+//! `error_bounds_dominate_the_proven_expressions`).
 
 #![allow(clippy::disallowed_methods)] // L2.4: libm in tests and examples, never as a reference (clippy.toml)
 #![allow(clippy::float_cmp)] // exact comparisons are the subject
@@ -65,14 +66,55 @@ fn pow10(k: i32) -> RBig {
     }
 }
 
-/// The relative bound of `operation`: `c u² (1 + 8u)`.
+/// The relative bound of `operation`: `c u²`, `c` its `units_of_u2` (a
+/// value that dominates the proven expression; the test below).
 fn bound(operation: &str) -> RBig {
     let c = Dd::ERROR_BOUNDS
         .iter()
         .find(|b| b.operation == operation)
         .unwrap_or_else(|| panic!("no bound for {operation:?}"))
         .units_of_u2;
-    q(c) * pow2(-106) * (RBig::from(1) + pow2(-50))
+    q(c) * pow2(-106)
+}
+
+/// Every `units_of_u2` of `ERROR_BOUNDS` is at least the proven expression
+/// of the chapter's table, in exact rational arithmetic (`u = 2⁻⁵³`), and
+/// every row of the table is there.
+#[test]
+fn error_bounds_dominate_the_proven_expressions() {
+    let one = RBig::from(1);
+    let u = pow2(-53);
+    let proven: [(&str, RBig); 8] = [
+        (
+            "dd + f64",
+            RBig::from(2) / (one.clone() - RBig::from(2) * u.clone()),
+        ),
+        (
+            "dd + dd",
+            RBig::from(3) / (one.clone() - RBig::from(4) * u.clone()),
+        ),
+        ("dd · f64", RBig::from(2)),
+        ("dd · dd", RBig::from(4)),
+        ("dd²", RBig::from(3)),
+        ("dd / f64", RBig::from(3)),
+        ("dd / dd", RBig::from(15) + RBig::from(56) * u.clone()),
+        ("√dd", RBig::from(25) / RBig::from(8)),
+    ];
+    assert_eq!(Dd::ERROR_BOUNDS.len(), proven.len());
+    for (b, (name, c)) in Dd::ERROR_BOUNDS.iter().zip(&proven) {
+        assert_eq!(b.operation, *name);
+        assert!(
+            q(b.units_of_u2) >= *c,
+            "{name}: stored {} below the proven bound",
+            b.units_of_u2
+        );
+        // Rounded up, not further: the next f64 below is below the bound
+        // whenever the stored value is not the expression itself.
+        if q(b.units_of_u2) != *c {
+            let below = f64::from_bits(b.units_of_u2.to_bits() - 1);
+            assert!(q(below) < *c, "{name}: not the smallest dominating f64");
+        }
+    }
 }
 
 /// `|z − exact| ≤ bound · |exact|`.

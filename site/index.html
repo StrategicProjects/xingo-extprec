@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>xingo-extprec — extended precision with proven bounds, in pure Rust</title>
+<meta name="description" content="A Rust crate for extended-precision numerical linear algebra: double-double arithmetic and elementary functions with proven error bounds, compensated kernels whose SIMD versions return the scalar bits, intervals without changing the rounding mode, and rigorous enclosures of sparse residuals. Literate, deterministic, no unsafe, no libm calls." />
+<meta property="og:title" content="xingo-extprec — extended precision with proven bounds" />
+<meta property="og:description" content="Double-double arithmetic with proven error bounds, compensated kernels, outward-rounded intervals and certified residuals. Pure Rust, literate, deterministic." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://strategicprojects.github.io/xingo-extprec/" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%8A%95%3C/text%3E%3C/svg%3E" />
+<style>
+  :root {
+    --bg: #0b1020;
+    --bg-soft: #121a33;
+    --card: #16203f;
+    --border: #263457;
+    --fg: #e8edf7;
+    --muted: #9fb0d0;
+    --brand: #3fa7ff;
+    --brand-2: #29c7ac;
+    --accent: #ffb14e;
+    --code-bg: #0d1428;
+    --shadow: 0 12px 40px rgba(0,0,0,.35);
+    --radius: 16px;
+    --maxw: 1080px;
+    --cell: #3987e5;
+    --fill: #d95926;
+    --grid: #263457;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f8fe;
+      --bg-soft: #eef2fb;
+      --card: #ffffff;
+      --border: #dbe3f4;
+      --fg: #10192e;
+      --muted: #56648a;
+      --code-bg: #0d1428;
+      --shadow: 0 12px 36px rgba(30,45,90,.12);
+      --cell: #2a78d6;
+      --fill: #eb6834;
+      --grid: #e6ebf7;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--fg);
+    background:
+      radial-gradient(1100px 600px at 12% -8%, rgba(63,167,255,.18), transparent 60%),
+      radial-gradient(900px 500px at 96% 4%, rgba(41,199,172,.16), transparent 55%),
+      var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--brand-2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 22px; }
+
+  header.nav {
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(10px);
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 62px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.02em; font-size: 1.1rem; }
+  .brand .logo { font-size: 1.35rem; color: var(--brand); }
+  .nav-links { display: flex; gap: 22px; align-items: center; }
+  .nav-links a { color: var(--muted); font-weight: 600; font-size: .95rem; }
+  .nav-links a:hover { color: var(--fg); text-decoration: none; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px; border-radius: 12px; font-weight: 700; font-size: .95rem;
+    border: 1px solid var(--border); color: var(--fg); background: var(--card);
+    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); box-shadow: var(--shadow); }
+  .btn.primary { background: linear-gradient(135deg, var(--brand), #5b73ff); color: #fff; border: none; }
+  @media (max-width: 720px) { .nav-links a.hide-sm { display: none; } }
+
+  .hero { padding: 74px 0 40px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--brand-2); background: color-mix(in srgb, var(--brand-2) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--brand-2) 30%, transparent);
+    padding: 6px 12px; border-radius: 999px;
+  }
+  h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); line-height: 1.05; letter-spacing: -.03em; margin: 18px 0 14px; }
+  h1 .grad { background: linear-gradient(120deg, var(--brand), var(--brand-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { font-size: 1.18rem; color: var(--muted); max-width: 46ch; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 26px; }
+  .badges img { height: 22px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; }
+  .hero-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 40px; align-items: center; }
+  @media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; } }
+
+  .term {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .term-bar { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
+  .term-title { margin-left: 8px; color: #7f8bb0; font: 600 .82rem ui-monospace, monospace; }
+  pre { margin: 0; padding: 18px 18px 22px; overflow-x: auto; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88rem; }
+  pre code { color: #d7e0f5; }
+  p code, li code, td code { background: color-mix(in srgb, var(--brand) 12%, transparent); padding: 1px 6px; border-radius: 6px; font-size: .9em; }
+  .c-prompt { color: #6ee7c8; } .c-flag { color: #ffb14e; } .c-cmd { color: #8ea2ff; } .c-cmt { color: #6b779b; } .c-ok { color: #59d99a; }
+  .c-str { color: #ffb14e; } .c-ty { color: #6ee7c8; } .c-kw { color: #c9a5ff; }
+
+  section { padding: 56px 0; }
+  section.alt { background: var(--bg-soft); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  h2 { font-size: clamp(1.6rem, 3.4vw, 2.2rem); letter-spacing: -.02em; margin: 0 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 30px; max-width: 66ch; }
+
+  .grid { display: grid; gap: 18px; }
+  .grid > * { min-width: 0; }
+  .panel pre { max-width: 100%; }
+  .grid.f3 { grid-template-columns: repeat(3, 1fr); }
+  .grid.f2 { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 860px) { .grid.f3, .grid.f2 { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 22px; transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); }
+  .card .ic { font-size: 1.5rem; }
+  .card h3 { margin: 12px 0 6px; font-size: 1.1rem; letter-spacing: -.01em; }
+  .card p { margin: 0; color: var(--muted); font-size: .96rem; }
+  .card ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: .94rem; }
+
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .pill { font: 600 .82rem ui-monospace, monospace; padding: 6px 11px; border-radius: 999px; background: color-mix(in srgb, var(--brand) 12%, transparent); border: 1px solid color-mix(in srgb, var(--brand) 26%, transparent); color: var(--fg); }
+
+  .panel { background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px; }
+  .note { color: var(--muted); font-size: .9rem; margin-top: 10px; }
+
+  table.cmp { width: 100%; border-collapse: collapse; font-size: .94rem; }
+  table.cmp th, table.cmp td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.cmp th { color: var(--muted); font-weight: 700; }
+  table.cmp td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+
+  .viz { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; box-shadow: var(--shadow); }
+  .viz h3 { margin: 0 0 2px; font-size: 1.1rem; letter-spacing: -.01em; }
+  .viz .cap { margin: 0 0 14px; color: var(--muted); font-size: .92rem; }
+  .viz svg { display: block; width: 100%; height: auto; }
+  .viz text { font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; fill: var(--muted); }
+  .viz text.t { fill: var(--fg); font-weight: 700; font-size: 13px; }
+  .viz text.m { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 10px; font-size: .88rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+  .key.k1 { background: var(--cell); } .key.k2 { background: var(--fill); } .key.k0 { background: var(--grid); border: 1px solid var(--border); }
+
+  footer { padding: 40px 0 60px; color: var(--muted); border-top: 1px solid var(--border); }
+  .foot-inner { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; }
+  .foot-links { display: flex; gap: 18px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand"><span class="logo">⊕</span> xingo-extprec</div>
+    <nav class="nav-links">
+      <a class="hide-sm" href="#entry">Entry points</a>
+      <a class="hide-sm" href="#bounds">Bounds</a>
+      <a class="hide-sm" href="#design">Design</a>
+      <a class="hide-sm" href="#install">Install</a>
+      <a class="hide-sm" href="#limits">Limitations</a>
+      <a class="hide-sm" href="#credits">Credits</a>
+      <a class="hide-sm" href="api/xingo_extprec/">API</a>
+      <a class="btn" href="https://github.com/StrategicProjects/xingo-extprec">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">◆ Rust · extended precision</span>
+        <h1>Know <span class="grad">how wrong</span> a floating-point result is.</h1>
+        <p class="lead">Double-double numbers whose every operation and elementary function has a proven error bound, compensated kernels, intervals without touching the rounding mode, and certified residuals of sparse systems. Pure Rust, written as a book, deterministic to the bit.</p>
+        <div class="badges">
+          <a href="https://github.com/StrategicProjects/xingo-extprec/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/StrategicProjects/xingo-extprec/actions/workflows/ci.yml/badge.svg"></a>
+          <a href="https://crates.io/crates/xingo-extprec"><img alt="crates.io" src="https://img.shields.io/crates/v/xingo-extprec.svg"></a>
+          <a href="https://docs.rs/xingo-extprec"><img alt="docs.rs" src="https://docs.rs/xingo-extprec/badge.svg"></a>
+          <img alt="MSRV 1.90" src="https://img.shields.io/badge/MSRV-1.90-blue.svg">
+          <img alt="License MIT or Apache-2.0" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg">
+          <img alt="No unsafe" src="https://img.shields.io/badge/unsafe-forbidden-brightgreen.svg">
+          <!-- TODO(owner): the Zenodo DOI badge, once the first release is archived. -->
+        </div>
+        <div class="cta">
+          <a class="btn primary" href="#install">Get started →</a>
+          <a class="btn" href="api/xingo_extprec/">API reference</a>
+          <a class="btn" href="https://github.com/StrategicProjects/xingo-extprec">GitHub ★</a>
+        </div>
+      </div>
+      <div class="term" aria-hidden="true">
+        <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title">README.md</span></div>
+<pre><code><span class="c-kw">let</span> x = [<span class="c-flag">1e16</span>, <span class="c-flag">1.0</span>, -<span class="c-flag">1e16</span>];
+<span class="c-kw">let</span> y = [<span class="c-flag">1.0</span>, <span class="c-flag">1.0</span>, <span class="c-flag">1.0</span>];
+<span class="c-cmt">// the naive f64 dot product is 0: the 1 is lost</span>
+<span class="c-kw">let</span> (r, beta) = kernels::<span class="c-cmd">dot2_err</span>(&amp;x, &amp;y);
+<span class="c-cmt">// r = 1, and |xᵀy − r| ≤ β is a theorem</span>
+assert!((r.<span class="c-cmd">to_f64</span>() - <span class="c-flag">1.0</span>).<span class="c-cmd">abs</span>() &lt;= beta);
+
+<span class="c-kw">let</span> big = <span class="c-ty">DoubleDouble</span>::<span class="c-cmd">from_f64</span>(<span class="c-flag">1e16</span>);
+assert_eq!(((big + <span class="c-flag">1.0</span>) - big).<span class="c-cmd">to_f64</span>(), <span class="c-flag">1.0</span>);
+
+<span class="c-cmt">// every residual of A x = b, enclosed row by row</span>
+<span class="c-kw">let</span> r = verify::<span class="c-cmd">residual</span>(&amp;a, &amp;x, &amp;b)?;
+assert!(<span class="c-cmd">norm_inf_bound</span>(&amp;r) &lt;= <span class="c-flag">1e-14</span>);
+
+<span class="c-prompt">$</span> <span class="c-cmd">cargo</span> test --doc
+test result: <span class="c-ok">ok</span></code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section id="entry" class="alt">
+    <div class="wrap">
+      <h2>Four entry points, one layer</h2>
+      <p class="sub">Not an arbitrary-precision library and not interval linear algebra: the cheap step between <code>f64</code> and exact rationals that a solver needs to measure, polish and certify its own results.</p>
+      <div class="grid f2">
+        <div class="card"><div class="ic">⊕</div><h3>DoubleDouble</h3><p>An unevaluated sum of two <code>f64</code>, about 32 decimal digits. Field operations by the algorithms of Joldes, Muller &amp; Popescu, whose bounds are proven; always the <strong>accurate</strong> addition, never the "sloppy" one whose error is unbounded under cancellation. Correctly rounded <code>Display</code> and <code>FromStr</code>, the 23 elementary functions of <code>f64</code> with its special cases, the 19 constants of <code>f64::consts</code>.</p></div>
+        <div class="card"><div class="ic">Σ</div><h3>Compensated kernels</h3><p><code>sum2</code>, <code>dot2</code> and <code>dot2_err</code> (Ogita, Rump &amp; Oishi) return an <code>f64</code> sum or dot product as accurate as if computed in twice the precision, <code>dot2_err</code> with a rigorous bound on its own error; the double-double <code>dot</code>, <code>axpy</code> and <code>gemm_sub</code>. SIMD (NEON, AVX2) with the <strong>bits of the scalar reference</strong>.</p></div>
+        <div class="card"><div class="ic">[ ]</div><h3>Interval</h3><p>Closed intervals with <code>f64</code> endpoints, each operation the tightest representable enclosure of the exact range. Directed rounding is <em>computed</em> from error-free transformations, not set in hardware: Rust has no sound way to change the rounding mode, and the crate has no <code>unsafe</code>. Exact under underflow too.</p></div>
+        <div class="card"><div class="ic">✓</div><h3>verify</h3><p>An interval that <strong>contains</strong> each residual <code>a_iᵀx − b_i</code> of a sparse system of <code>xingo-sparse</code>, at about 25 flops per nonzero; <code>polish</code> refines <code>x</code> in double-double around the caller's <code>f64</code> solve. With the feature <code>sparse</code>, <code>Lu&lt;DoubleDouble&gt;</code> and <code>SupernodalLdl&lt;DoubleDouble&gt;</code> run unchanged.</p></div>
+      </div>
+      <div class="pills" style="margin-top:22px">
+        <span class="pill">two_sum</span><span class="pill">two_prod</span><span class="pill">DoubleDouble</span><span class="pill">ERROR_BOUNDS</span><span class="pill">FUNCTION_BOUNDS</span><span class="pill">kernels::dot2_err</span><span class="pill">Interval</span><span class="pill">certainly_within</span><span class="pill">verify::residual</span><span class="pill">verify::polish</span><span class="pill">DdDense</span><span class="pill">impl Real</span>
+      </div>
+      <p class="note">Without the default features <code>sparse</code> and <code>simd</code> the crate has <em>no dependency at all</em>: <code>DoubleDouble</code> with its functions, the scalar kernels and <code>Interval</code> remain. With or without <code>simd</code> the results are the same, bit for bit.</p>
+    </div>
+  </section>
+
+  <section id="bounds">
+    <div class="wrap">
+      <h2>Proven, then measured</h2>
+      <p class="sub">Every bound is a theorem the code exposes as data (<code>DoubleDouble::ERROR_BOUNDS</code>, <code>DoubleDouble::FUNCTION_BOUNDS</code>) and the tests check against exact arithmetic. The numbers below come from the decision log of the solver this crate was built for.</p>
+      <div class="grid f2" style="align-items:start">
+        <div class="viz">
+          <h3>Elementary functions: declared, proven, observed</h3>
+          <p class="cap">Relative error in units of <code>u² = 2⁻¹⁰⁶</code>, as a fraction of the declared bound (the number at the right). Upper bar: the bound the proof gives. Lower bar: the worst error observed in 10⁵ samples of the family.</p>
+          <div class="legend"><span><i class="key k0"></i>declared bound</span><span><i class="key k1"></i>proven</span><span><i class="key k2"></i>worst observed</span></div>
+          <svg viewBox="0 0 560 310" role="img" aria-label="For ten elementary functions, the proven bound is 57 to 98 percent of the declared one and the worst observed error 17 to 32 percent of it.">
+            <text x="150" y="28" class="m">0</text>
+            <text x="530" y="28" text-anchor="end" class="m">declared</text>
+            <text x="142" y="53" text-anchor="end" class="t m">exp</text>
+            <rect x="150" y="40" width="380" height="18" rx="3" fill="var(--grid)"/>
+            <rect x="150" y="41" width="218.5" height="8" rx="2" fill="var(--cell)"/>
+            <rect x="150" y="50" width="84.1" height="7" rx="2" fill="var(--fill)"/>
+            <text x="536" y="53" class="m">8</text>
+            <text x="142" y="79" text-anchor="end" class="t m">exp_m1</text>
+            <rect x="150" y="66" width="380" height="18" rx="3" fill="var(--grid)"/>
+            <rect x="150" y="67" width="342.0" height="8" rx="2" fill="var(--cell)"/>
+            <rect x="150" y="76" width="120.2" height="7" rx="2" fill="var(--fill)"/>
+            <text x="536" y="79" class="m">8</text>
+            <text x="142" y="105" text-anchor="end" class="t m">ln</text>
+            <rect x="150" y="92" width="380" height="18" rx="3" fill="var(--grid)"/>
+            <rect x="150" y="93" width="318.2" height="8" rx="2" fill="var(--cell)"/>
+            <rect x="150" y="102" width="90.7" height="7" rx="2" fill="var(--fill)"/>
+            <text x="536" y="105" class="m">8</text>
+            <text x="142" y="131" text-anchor="end" class="t m">ln_1p</text>
+            <rect x="150" y="118" width="380" height="18" rx="3" fill="var(--grid)"/>
+            <rect x="150" y="119" width="365.8" height="8" rx="2" fill="var(--cell)"/>
+            <rect x="150" y="128" width="102.6" height="7" rx="2" fill="var(--fill)"/>
+            <text x="536" y="131" class="m">8</text>
+            <text x="142" y="157" text-anchor="end" class="t m">atan</text>
+            <rect x="150" y="144" width="380" height="18" rx="3" fill="var(--grid)"/>
+            <rect x="150" y="145" width="275.5" height="8" rx="2" fill="var(--cell)"/>
+            <rect x="150" y="154" width="92.1" height="7" rx="2" fill="var(--fill)"/>
+            <text x="536" y="157" class="m">8</text>
+            <text x="142" y="183" text-anchor="end" class="t m">sin</text>
+            <rect x="150" y="170" width="380" height="18" rx="3" fill="var(--grid)"/>
+            <rect x="150" y="171" width="327.8" height="8" rx="2" fill="var(--cell)"/>
+            <rect x="150" y="180" width="112.6" height="7" rx="2" fill="var(--fill)"/>
+            <text x="536" y="183" class="m">8</text>
+            <text x="142" y="209" text-anchor="end" class="t m">log2</text>
+            <rect x="150" y="196" width="380" height="18" rx="3" fill="var(--grid)"/>
+            <rect x="150" y="197" width="370.5" height="8" rx="2" fill="var(--cell)"/>
+            <rect x="150" y="206" width="100.1" height="7" rx="2" fill="var(--fill)"/>
+            <text x="536" y="209" class="m">12</text>
+            <text x="142" y="235" text-anchor="end" class="t m">tan</text>
+            <rect x="150" y="222" width="380" height="18" rx="3" fill="var(--grid)"/>
+            <rect x="150" y="223" width="325.4" height="8" rx="2" fill="var(--cell)"/>
+            <rect x="150" y="232" width="66.1" height="7" rx="2" fill="var(--fill)"/>
+            <text x="536" y="235" class="m">32</text>
+            <text x="142" y="261" text-anchor="end" class="t m">asin</text>
+            <rect x="150" y="248" width="380" height="18" rx="3" fill="var(--grid)"/>
+            <rect x="150" y="249" width="309.9" height="8" rx="2" fill="var(--cell)"/>
+            <rect x="150" y="258" width="69.7" height="7" rx="2" fill="var(--fill)"/>
+            <text x="536" y="261" class="m">32</text>
+            <text x="142" y="287" text-anchor="end" class="t m">tanh</text>
+            <rect x="150" y="274" width="380" height="18" rx="3" fill="var(--grid)"/>
+            <rect x="150" y="275" width="313.5" height="8" rx="2" fill="var(--cell)"/>
+            <rect x="150" y="284" width="74.0" height="7" rx="2" fill="var(--fill)"/>
+            <text x="536" y="287" class="m">32</text>
+          </svg>
+          <p class="note">Ten of the 23 functions; the others are in the same range. In a separate validation against <code>mpmath</code> at 3 000 bits (256 000 samples, an oracle the implementation does not use), no bound was violated and the worst error was 30 % of its bound. <code>sin</code> and <code>cos</code> carry an absolute floor of 2⁻²⁰⁰ on the whole real line (Payne–Hanek reduction).</p>
+        </div>
+        <div class="viz">
+          <h3>Operations: bound and worst observed error</h3>
+          <p class="cap">Relative error in units of <code>u²</code>; the worst of 20 000 samples against exact rationals.</p>
+          <div class="scroll">
+            <table class="cmp">
+              <thead><tr><th>Operation</th><th>Algorithm</th><th class="num">Bound</th><th class="num">Observed</th></tr></thead>
+              <tbody>
+                <tr><td><code>dd + f64</code></td><td>DWPlusFP</td><td class="num">2/(1 − 2u)</td><td class="num">1.00</td></tr>
+                <tr><td><code>dd + dd</code></td><td>AccurateDWPlusDW</td><td class="num">3/(1 − 4u)</td><td class="num">1.98</td></tr>
+                <tr><td><code>dd · f64</code></td><td>DWTimesFP3</td><td class="num">2</td><td class="num">1.38</td></tr>
+                <tr><td><code>dd · dd</code></td><td>DWTimesDW3</td><td class="num">4</td><td class="num">2.93</td></tr>
+                <tr><td><code>dd²</code></td><td>DWPow2</td><td class="num">3</td><td class="num">2.86</td></tr>
+                <tr><td><code>dd / f64</code></td><td>DWDivFP3</td><td class="num">3</td><td class="num">2.56</td></tr>
+                <tr><td><code>dd / dd</code></td><td>DWDivDW2</td><td class="num">15 + 56u</td><td class="num">6.17</td></tr>
+                <tr><td><code>√dd</code></td><td>SQRTDWtoDW</td><td class="num">25/8</td><td class="num">2.69</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note">The division keeps DWDivDW2 instead of DWDivDW3 and its better bound (9.8): a quotient through a rounded reciprocal lost <code>53/53 = 1</code> and 4 600 of the 39 601 integer quotients <code>(q·y)/y = q</code>, which DWDivDW2 returns exactly.</p>
+        </div>
+      </div>
+      <div class="grid f3" style="margin-top:18px">
+        <div class="card"><div class="ic">✓</div><h3>93 of 93 Netlib bases certified</h3><p>The residual of the optimal basis of every Netlib LP, enclosed by <code>verify</code>, with no unbounded enclosure: largest certified <code>‖r‖∞</code> 1.2 × 10⁻¹² relative to <code>max(1, ‖z‖∞)</code> in <code>f64</code>, 6.8 × 10⁻²² after polishing. In the solver, <code>--exact-check=interval</code> adds 0.18 % to the solve time of the 93.</p></div>
+        <div class="card"><div class="ic">≡</div><h3>SIMD with the same bits</h3><p>On NEON, 1.9–2.1× faster than the scalar reference for <code>sum2</code>, <code>dot2</code>, <code>dot</code>; 1.6–1.8× for <code>axpy</code> and <code>gemm_sub</code>; 1.3–1.4× for <code>dot2_err</code>. <code>DdDense</code> speeds the supernodal LDLᵀ factorization in double-double 1.47–1.67×.</p></div>
+        <div class="card"><div class="ic">⏱</div><h3>What it costs</h3><p>1.4–3.4 ns per double-double operation; 190–750 ns per elementary function (<code>exp</code> 232, <code>sin</code> 344, <code>ln</code> 430). Over <code>f64</code>: LU factorization 1.7–1.9×, LDLᵀ factorization 6–11×. Apple M2 Pro; x86_64 not measured.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="design" class="alt">
+    <div class="wrap">
+      <h2>Written as a book</h2>
+      <p class="sub">Every module is a chapter: purpose, notation, the algorithm in numbered steps, invariants, the proofs of the bounds, references. The crate documentation <em>is</em> the text, every chapter included (docs.rs builds it with the private items, where most chapters live), starting at Chapter 11 with the corrections the implementation made to its own contract.</p>
+      <div class="grid f3">
+        <div class="card"><div class="ic">§</div><h3>Invariants that run</h3><p>Each invariant of a chapter is a <code>debug_assert!</code> or a <code>check_invariants()</code>; property-based tests replay them against exact rational and dyadic oracles (<code>dashu</code>, a development dependency only).</p></div>
+        <div class="card"><div class="ic">🧾</div><h3>Deterministic</h3><p>Every operation is a fixed sequence of <code>f64</code> operations: no data-dependent choice of algorithm, no reassociation, no threads. Golden bits in the tests pin the elementary functions.</p></div>
+        <div class="card"><div class="ic">∅</div><h3>No libm calls</h3><p>The precision of <code>f64::exp</code>, <code>ln</code>, <code>sin</code>, … is unspecified and may differ between platforms; a lint rule forbids them in the crate. The seeds are tables; only <code>+ − × ÷ √ fma</code> and rounding to integers are used.</p></div>
+        <div class="card"><div class="ic">⚠️</div><h3>Never claims more than it proved</h3><p>When a hypothesis of a bound fails (overflow, a NaN, too long a vector) the answer is <code>Interval::ENTIRE</code>, a bound of <code>+∞</code> or an error, never a finite interval. The <code>certainly_*</code> predicates are false on the empty set.</p></div>
+        <div class="card"><div class="ic">🦀</div><h3>No <code>unsafe</code>, no C</h3><p><code>#![forbid(unsafe_code)]</code>. Both dependencies are optional and pure Rust: <code>xingo-sparse</code> and <code>pulp</code> (MIT). Nothing GPL or LGPL is used or linked, and there is no C binding to build.</p></div>
+        <div class="card"><div class="ic">📄</div><h3>Read, not copied</h3><p>The QD library, <code>twofloat</code> and <code>inari</code> were studied as references; the code is written from the papers: Dekker, Knuth, Joldes–Muller–Popescu, Muller–Rideau, Lefèvre–Louvet–Muller–Picot–Rideau, Ogita–Rump–Oishi, Rump–Zimmermann–Boldo–Melquiond.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>Install &amp; run</h2>
+      <p class="sub">Rust 1.90 or later. The README's examples are compiled as doc-tests, so they cannot drift from the API; changes between versions are in the <a href="https://github.com/StrategicProjects/xingo-extprec/blob/main/CHANGELOG.md">changelog</a>.</p>
+      <div class="panel" style="margin-bottom:18px">
+<pre><code><span class="c-prompt">$</span> <span class="c-cmd">cargo</span> add xingo-extprec                        <span class="c-cmt"># everything, with SIMD</span>
+<span class="c-prompt">$</span> <span class="c-cmd">cargo</span> add xingo-sparse --no-default-features   <span class="c-cmt"># the matrices verify reads</span>
+<span class="c-prompt">$</span> <span class="c-cmd">cargo</span> add xingo-extprec --no-default-features  <span class="c-cmt"># no dependency</span></code></pre>
+      </div>
+      <div class="grid f2">
+        <div>
+          <div class="panel">
+<pre><code><span class="c-cmt">// decimal in, decimal out: 31 digits, correctly rounded</span>
+<span class="c-kw">use</span> xingo_extprec::<span class="c-ty">DoubleDouble</span>;
+
+<span class="c-kw">let</span> x: <span class="c-ty">DoubleDouble</span> =
+    <span class="c-str">"0.1000000000000000000000000000001"</span>.<span class="c-cmd">parse</span>()?;
+assert_eq!(x.<span class="c-cmd">to_string</span>(),
+    <span class="c-str">"0.1000000000000000000000000000001"</span>);
+
+<span class="c-kw">let</span> third = <span class="c-ty">DoubleDouble</span>::ONE / <span class="c-flag">3.0</span>;
+assert_eq!(third.<span class="c-cmd">to_string</span>(),
+    <span class="c-str">"0.3333333333333333333333333333333"</span>);
+
+<span class="c-cmt">// within 8u² of e, by Theorem E</span>
+<span class="c-kw">let</span> e = <span class="c-ty">DoubleDouble</span>::ONE.<span class="c-cmd">exp</span>();</code></pre>
+          </div>
+        </div>
+        <div>
+          <div class="panel">
+<pre><code><span class="c-cmt">// certify, polish, certify again</span>
+<span class="c-kw">use</span> xingo_extprec::verify::*;
+
+<span class="c-kw">let</span> r = <span class="c-cmd">residual</span>(&amp;a, &amp;x, &amp;b)?;   <span class="c-cmt">// R_i ∋ a_iᵀx − b_i</span>
+<span class="c-kw">let</span> <span class="c-kw">mut</span> xd = x.<span class="c-cmd">map</span>(<span class="c-ty">DoubleDouble</span>::from_f64);
+<span class="c-cmd">polish</span>(&amp;a, &amp;b, &amp;<span class="c-kw">mut</span> xd,
+       &amp;<span class="c-kw">mut</span> solve,                <span class="c-cmt">// your f64 LU</span>
+       &amp;<span class="c-ty">PolishOptions</span>::<span class="c-cmd">default</span>())?;
+<span class="c-kw">let</span> rd = <span class="c-cmd">residual_of_dd</span>(&amp;a, &amp;xd, &amp;b)?;
+assert!(<span class="c-cmd">norm_inf_bound</span>(&amp;rd) &lt;= <span class="c-flag">1e-25</span>);</code></pre>
+          </div>
+        </div>
+      </div>
+      <p class="note">Three measurement programs ship with the crate: <code>cargo run --release --example dd_profile</code>, <code>dd_bench k8</code> and <code>ft_limit</code>. They print the Markdown tables recorded in the solver's decision log.</p>
+    </div>
+  </section>
+
+  <section id="limits" class="alt">
+    <div class="wrap">
+      <h2>Known limitations of 0.1</h2>
+      <p class="sub">Each one is recorded, with what was and was not checked, in the solver's decision log.</p>
+      <div class="card scroll">
+        <table class="cmp">
+          <tbody>
+            <tr><td>The bounds of the elementary functions and of the kernels are proven by first-order analyses written in the chapters of the sources and tested against exact oracles; they are not checked by a proof assistant. (Some bounds of the operations are, in the literature: Muller &amp; Rideau in Coq, Hubrecht &amp; Melquiond with Gappa.)</td></tr>
+            <tr><td>The same bits across platforms are a property of the design; they were observed on aarch64 (macOS, NEON), on x86_64 macOS under an emulator that announces no AVX2 (the scalar path) and on x86_64 Linux with AVX2 + FMA (the AVX2 path); other targets were not run. The mirror's CI runs on x86_64.</td></tr>
+            <tr><td>The bounds hold in the "safe range" (no overflow; every exact product at least 2⁻⁹⁶⁹ in magnitude, or zero). Below it results stay normalized, with an absolute error of order 2⁻¹⁰⁷⁴; <code>Interval</code> and <code>verify</code> account for underflow explicitly. The subnormal regime of the elementary functions was sampled only for <code>exp</code> and <code>exp2</code>.</td></tr>
+            <tr><td><code>verify</code> encloses residuals, not the error <code>‖x − x*‖</code> (that needs a rigorous bound on <code>‖A⁻¹‖</code>). <code>polish</code> stops on a per-row test and often ends <code>Stagnated</code> on bases with degenerate rows (9 of the 93 Netlib), which is harmless.</td></tr>
+            <tr><td>No <code>QuadDouble</code>, no elementary functions of intervals, no interval linear algebra (Krawczyk, <code>verifylss</code>), no correctly rounded elementary functions, no complex scalars, no <code>f32</code>.</td></tr>
+            <tr><td>The costs were measured once, on one machine (Apple M2 Pro), under load from other processes.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="credits">
+    <div class="wrap">
+      <h2>Authorship, credits and disclaimer</h2>
+      <p class="sub">Who wrote this, whose work it stands on, and what it does not claim.</p>
+      <div class="grid f3">
+        <div class="card"><div class="ic">✍️</div><h3>Authorship</h3><p><code>xingo-extprec</code> is written and maintained by <strong>André Leite</strong> as the extended-precision layer of the <a href="https://github.com/StrategicProjects/xingo">Xingó</a> solver, developed at <a href="https://github.com/StrategicProjects">StrategicProjects</a>. To cite it, use the repository's <code>CITATION.cff</code>.<!-- TODO(owner): add "the Zenodo DOI or", with the concept DOI link, once archived. --></p></div>
+        <div class="card"><div class="ic">🙏</div><h3>Credits</h3><p>The algorithms are those of their authors, implemented here from the published papers: Dekker and Knuth (error-free transformations), Joldes, Muller &amp; Popescu and Muller &amp; Rideau (double-word arithmetic and its bounds), Lefèvre, Louvet, Muller, Picot &amp; Rideau (square root), Hubrecht &amp; Melquiond (square), Ogita, Rump &amp; Oishi (compensated sums and dot products), Rump, Zimmermann, Boldo &amp; Melquiond (predecessor and successor), Tang (table-driven exponential), Payne &amp; Hanek (argument reduction), Kahan (<code>ln_1p</code>). The QD library of Hida, Li &amp; Bailey, <code>twofloat</code>, <code>inari</code> and INTLAB were studied as references; <a href="https://crates.io/crates/dashu">dashu</a> is the exact oracle of the tests and <a href="https://crates.io/crates/pulp">pulp</a> the optional SIMD dependency. Each chapter of the sources lists its references.</p></div>
+        <div class="card"><div class="ic">⚖️</div><h3>Disclaimer</h3><p>This is an independent project. It is not affiliated with, maintained by or endorsed by the authors of the QD library, <code>twofloat</code>, <code>inari</code>, INTLAB, <code>pulp</code> or <code>dashu</code>, and includes no code from them (<code>pulp</code> is linked only through the optional <code>simd</code> feature). All names and trademarks belong to their owners. The software is provided "as is", without warranty of any kind, under the terms of the MIT and Apache-2.0 licenses.</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot-inner">
+    <div><strong>xingo-extprec</strong> · MIT or Apache-2.0 · the extended-precision layer of the <a href="https://github.com/StrategicProjects/xingo">Xingó</a> solver · © 2026 André Leite · independent project, provided "as is" · <a href="#credits">authorship &amp; credits</a></div>
+    <div class="foot-links">
+      <a href="https://github.com/StrategicProjects/xingo-extprec">Repository</a>
+      <a href="https://crates.io/crates/xingo-extprec">crates.io</a>
+      <a href="https://docs.rs/xingo-extprec">docs.rs</a>
+      <a href="api/xingo_extprec/">API reference</a>
+      <a href="https://github.com/StrategicProjects/xingo-extprec/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/StrategicProjects/xingo-extprec/blob/main/CITATION.cff">Cite</a>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

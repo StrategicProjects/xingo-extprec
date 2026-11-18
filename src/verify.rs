@@ -212,6 +212,7 @@ use crate::kernels;
 /// What went wrong before any arithmetic. (`Display` and
 /// `core::error::Error` are implemented.)
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum VerifyError {
     /// `x` or `b` has the wrong length for `A` (for [`polish`], also: `A`
     /// is not square — `expected` is its number of rows, `got` its number
@@ -440,6 +441,7 @@ impl Default for PolishOptions {
 
 /// Why Algorithm P stopped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PolishStop {
     /// The test of step P2 (c) holds in every row.
     Converged,
@@ -459,6 +461,7 @@ pub enum PolishStop {
 
 /// The outcome of Algorithm P.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct PolishReport {
     /// Why it stopped.
     pub stop: PolishStop,

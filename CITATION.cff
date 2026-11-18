@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use xingo-extprec, please cite it using these metadata. Each release is archived on Zenodo with its own DOI."
+# TODO(owner): add `doi:` and `identifiers:` (concept DOI and version DOI) once Zenodo has archived the first release, as in xingo-sparse.
+type: software
+title: "xingo-extprec: extended precision and rigorous enclosures for numerical linear algebra"
+abstract: "Extended precision for numerical linear algebra in pure Rust: double-double arithmetic whose operations and elementary functions have proven error bounds, compensated sums and dot products with SIMD kernels that return the scalar results bit for bit, outward-rounded interval arithmetic without changing the rounding mode, and rigorous enclosures of sparse residuals with iterative-refinement polishing. The extended-precision layer of the Xingó solver."
+authors:
+  - family-names: Leite
+    given-names: André
+license:
+  - MIT
+  - Apache-2.0
+repository-code: "https://github.com/StrategicProjects/xingo-extprec"
+url: "https://strategicprojects.github.io/xingo-extprec/"
+version: 0.1.0
+# TODO(owner): `date-released:` with the date of publication.
+keywords:
+  - double-double arithmetic
+  - extended precision
+  - error-free transformations
+  - interval arithmetic
+  - verified computing
+  - compensated summation
+  - elementary functions
+  - iterative refinement
+  - Rust

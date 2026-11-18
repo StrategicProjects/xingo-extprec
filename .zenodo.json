@@ -1,0 +1,34 @@
+{
+  "title": "xingo-extprec: extended precision and rigorous enclosures for numerical linear algebra",
+  "upload_type": "software",
+  "description": "<p>Extended precision for numerical linear algebra in pure Rust: double-double arithmetic whose operations and elementary functions have proven error bounds, compensated sums and dot products with SIMD kernels that return the scalar results bit for bit, outward-rounded interval arithmetic without changing the rounding mode, and rigorous enclosures of sparse residuals with iterative-refinement polishing. The extended-precision layer of the Xingó solver.</p><p>Dual-licensed under MIT or Apache-2.0, at your option.</p>",
+  "creators": [
+    {
+      "name": "Leite, André"
+    }
+  ],
+  "license": "MIT",
+  "keywords": [
+    "double-double arithmetic",
+    "extended precision",
+    "error-free transformations",
+    "interval arithmetic",
+    "verified computing",
+    "compensated summation",
+    "elementary functions",
+    "iterative refinement",
+    "Rust"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/StrategicProjects/xingo-extprec",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://strategicprojects.github.io/xingo-extprec/",
+      "relation": "isDocumentedBy",
+      "scheme": "url"
+    }
+  ]
+}
