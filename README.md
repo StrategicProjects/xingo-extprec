@@ -304,81 +304,76 @@ Not in 0.1, and additive when they come: arithmetic operators with an
 an `f64` (`x += 1.0`) for `DoubleDouble` (`Interval` has both); `floor`,
 `ceil`, `round`, `trunc`, `signum`, `total_cmp`.
 
+## How it was verified
+
+* **Exact oracles.** Every operation, kernel and elementary function is
+  tested against two exact oracles in the suite, and the 23 elementary
+  functions were checked once more, outside the suite, against `mpmath`
+  (256 000 points, then 130 000 adversarial ones in the subnormal regime
+  and a directed search of 10⁶ points per family: no violation).
+* **Independent review of the proofs.** Before 0.1 the proofs of Chapter
+  11.11 were re-derived line by line by three independent reviews, each
+  with a directed search against `mpmath`. They found three defects
+  (`acos` and `acosh` of `1 ∓ δ` and `atanh` of `±(1 − δ)` with a tiny
+  trailing component `δ`); the subnormal tests found a fourth (`atan2`
+  with a subnormal result). All four were fixed before release. Each
+  proven constant is honest up to a factor `1 + 2⁻⁸⁰` (the neglected
+  products of errors), and every declared constant exceeds it by far more
+  (the smallest margin is `log2` and `log10`: 12 declared, 11.7 proven).
+* **Subnormal regime.** All 23 elementary functions are tested against the
+  oracle below `2⁻⁹⁶⁸`, at directed points and in property tests:
+  subnormal arguments, normal ones with a subnormal trailing component
+  (`1 ± δ` with `δ` down to `2⁻¹⁰⁷⁴`), and results that underflow (`exp`,
+  `exp2`, `exp_m1`, `powi`, `powf`, `atan2`).
+* **`forward_error_bound`.** An independent reviewer checked 262 000
+  adversarial cases in exact arithmetic (singular, nearly singular and
+  badly scaled matrices; solves that return garbage): no singular matrix
+  certified, no bound below the true error. The review found one defect
+  in an older kernel, `dot2_err`, in an overflow corner; it was fixed
+  before release. In the Xingó solver the function certifies the optimal
+  bases of all 93 Netlib LPs; on dense test matrices it certified up to
+  `κ(A) ≈ 10¹⁶` with refinement (`≈ 10¹⁴` without) — a measurement, not a
+  guarantee in either direction.
+* **Platforms.** The suite, with the golden bits of the elementary
+  functions and the SIMD kernels compared bit for bit with the scalar
+  reference, runs in the CI of the mirror on x86_64 Linux, x86_64 Windows,
+  aarch64 Linux and macOS (NEON) and i686 Linux (32 bits), and was run by
+  hand on x86_64 Linux with AVX2 + FMA (a Xeon E5 v4) and on x86_64 macOS
+  under emulation (the scalar path).
+
 ## Known limitations
 
-1. **The proofs are not machine-checked.** The bounds of the operations
-   come from the literature (some formalized there: Muller & Rideau in
-   Coq, Hubrecht & Melquiond with Gappa); the bounds of the elementary
-   functions and of the kernels are first-order analyses written in the
-   chapters of the sources, checked by tests against two exact oracles and
-   once, outside the suite, against `mpmath`; not by a proof assistant.
-   Each proven constant of Chapter 11.11 is honest up to a factor
-   `1 + 2⁻⁸⁰` (the neglected products of errors), and every declared
-   constant exceeds it by far more (the smallest margin is `log2` and
-   `log10`: 12 declared, 11.7 proven). Before 0.1 the proofs of Chapter
-   11.11 were re-derived line by line by three independent reviews, each
-   with a directed search against `mpmath`: they found three defects
-   (`acos` and `acosh` of `1 ∓ δ` and `atanh` of `±(1 − δ)` with a tiny
-   trailing component `δ`), fixed before release, and one gap: for `tan`
-   in an odd quadrant with a reduced argument below `2⁻³⁰⁰` — never
-   observed, the smallest found being `2⁻¹¹⁸`, but not proven impossible
-   — only the declared bound is proven, not the sharper one of the chapter.
-2. **Same bits across platforms: observed on the targets of the CI.** The
-   design gives the same bits on every target; the test suite, with the
-   golden bits of the elementary functions and the SIMD kernels compared
-   bit for bit with the scalar reference, runs in the CI of the mirror on
-   x86_64 Linux, x86_64 Windows, aarch64 Linux and macOS (NEON) and i686
-   Linux (32 bits), and was run by hand on x86_64 Linux with AVX2 + FMA (a
-   Xeon E5 v4: the AVX2 path) and on x86_64 macOS under emulation (the
-   scalar path). Not run: big-endian targets, WebAssembly, and x86 CPUs
-   without SSE2.
-3. The bounds hold for operands in the "safe range" (every `two_prod`
-   product of magnitude at least `2⁻⁹⁶⁹` or zero). Below it the operations
-   stay normalized with an absolute error of order `2⁻¹⁰⁷⁴`; `Interval`
-   and `verify` account for underflow explicitly. The elementary
-   functions state their bounds with that `η = 2⁻¹⁰⁷⁴` added for results
-   below `2⁻⁹⁶⁸`, and all 23 are tested there against the oracle, at
-   directed points and in property tests: subnormal arguments, normal
-   ones with a subnormal trailing component (`1 ± δ` with `δ` down to
-   `2⁻¹⁰⁷⁴` included), and results that underflow (`exp`, `exp2`,
-   `exp_m1`, `powi`, `powf`, `atan2`). That regime is tested, not
-   exhausted: `sin` and `tan` were not driven to subnormal results other
-   than from tiny arguments (near nonzero multiples of `π` the absolute
-   term `2⁻²⁰⁰` of their bound is far larger than `η`).
-4. `verify::forward_error_bound` bounds the error of **one** solution of
-   **one** square system with point data, in the ∞-norm and by component;
-   solution sets of interval systems, 2-norm bounds and non-square systems
-   are out. It costs at most `n` transposed solves of the caller (at most
-   `2n` with the default refinement) plus up to `n · nnz(A)` compensated products, and
-   is quadratic in `n` with dense solves: measured, 15 s for the 93
-   optimal bases of Netlib (both an `f64` and a polished solution; the
-   largest, `m = 6 071`, 5.9 s); on a sparse synthetic family (measured
-   once, in the contract's pilot) 21 s at `n = 10⁴` and 4.5 min at `3 ·
-   10⁴`. A singular `A` is never certified. On dense test matrices it
-   certified up to `κ(A) ≈ 10¹⁶` with refinement (`≈ 10¹⁴` without) —
-   measurements, not a guarantee in either direction: whether a matrix is
-   certified depends on the solve and the data, not on `κ` alone (the
-   review saw a 4 × 4 permutation-like matrix with `κ∞ ≈ 10⁴⁷²`
-   certified). For a polished
-   solution the bound reflects the width of the residual enclosure, not the
-   true error (overestimation up to `7.7 · 10⁴` observed). Its proof (Theorem E, Chapter 11.10) is the chapter's own; before release it was reviewed by an independent reviewer with 262 000 adversarial cases checked in exact arithmetic, and no false bound was found. `polish` stops on a per-row test
-   `|r_i| ≤ τ (Σ_j |a_ij x_j| + |b_i|)`; on bases with degenerate rows it
-   often ends `Stagnated`, which is harmless (9 of the 93 Netlib bases).
-5. Cost: an elementary function takes 190–760 ns per call on an Apple M2
-   Pro (`exp` 233, `ln` 427, `sin` 344, `atan` 196, `powf` 758) and
-   310–1 030 ns on a Xeon E5-2699 v4 (`exp` 361, `ln` 595, `sin` 596,
-   `atan` 312, `powf` 1 033), against 1.9 ns for a double-double product
-   on the M2 Pro. `sin_cos` shares the reduction, not the kernels.
-   Measured on those two machines only, three runs each, neither of them
-   idle; the example `elementary_bench` (`cargo run --release --example
-   elementary_bench`, no feature needed) prints the same rows on any
-   machine.
+What is still open in 0.1. The ones that can be closed have an issue.
+
+1. **The proofs are not machine-checked.** They are first-order analyses
+   written in the chapters of the sources, reviewed and tested, not
+   verified by a proof assistant ([#2](https://github.com/StrategicProjects/xingo-extprec/issues/2)).
+2. **One gap in `tan`.** In an odd quadrant with a reduced argument below
+   `2⁻³⁰⁰` — never observed, the smallest found being `2⁻¹¹⁸`, but not
+   proven impossible — only the declared bound is proven, not the sharper
+   one of the chapter ([#1](https://github.com/StrategicProjects/xingo-extprec/issues/1)).
+3. **Platforms not run:** big-endian targets, WebAssembly, and x86 CPUs
+   without SSE2 ([#3](https://github.com/StrategicProjects/xingo-extprec/issues/3)).
+4. **The bounds hold in the safe range** (no overflow; every `two_prod`
+   product of magnitude at least `2⁻⁹⁶⁹`, or zero). Below it the
+   operations stay normalized with an absolute error of order `2⁻¹⁰⁷⁴`,
+   and the elementary functions add `η = 2⁻¹⁰⁷⁴` to their bounds. An
+   operand of magnitude `Ω` counts as overflow ([#6](https://github.com/StrategicProjects/xingo-extprec/issues/6)).
+5. **`forward_error_bound` covers one square system with point data**, in
+   the ∞-norm and by component: no solution sets of interval systems, no
+   2-norm bounds, no non-square systems. It needs up to `2n` transposed
+   solves and is quadratic in `n` when they are dense (21 s at `n = 10⁴`),
+   so it does not reach `n ≫ 10⁵` ([#4](https://github.com/StrategicProjects/xingo-extprec/issues/4)). For a solution polished in
+   double-double the bound can overestimate the true error (up to
+   `7.7 · 10⁴` times observed; [#5](https://github.com/StrategicProjects/xingo-extprec/issues/5)).
+6. **The costs were measured on two machines**, neither of them idle; the
+   kernel and factorization rows on one only ([#7](https://github.com/StrategicProjects/xingo-extprec/issues/7)).
 
 ## Measured cost
 
 On an Apple M2 Pro (NEON), release builds, medians recorded in the
-solver's benchmark log (on x86_64 only the elementary functions of
-limitation 5 were measured):
+solver's benchmark log (on x86_64 only the elementary functions, below,
+were measured):
 
 | what | cost |
 |---|---|
@@ -397,6 +392,17 @@ error of the basic solution by `forward_error_bound` certifies all 93 too,
 in 15 s for both an `f64` and a polished solution (the dual simplex takes
 about 30 s), with `ε` equal to the error measured against the polished
 point to three digits.
+
+An elementary function takes 190–760 ns per call on the M2 Pro (`exp` 233,
+`ln` 427, `sin` 344, `atan` 196, `powf` 758) and 310–1 030 ns on a Xeon
+E5-2699 v4 with AVX2 (`exp` 361, `ln` 595, `sin` 596, `atan` 312, `powf`
+1 033); three runs on each machine. `sin_cos` shares the reduction, not the
+kernels. The example `elementary_bench` (`cargo run --release --example
+elementary_bench`, no feature needed) prints the same rows on any machine.
+
+`polish` stops on a per-row test `|r_i| ≤ τ (Σ_j |a_ij x_j| + |b_i|)`; on
+bases with degenerate rows it often ends `Stagnated`, which is harmless (9
+of the 93 Netlib bases).
 
 ## Design notes
 

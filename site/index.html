@@ -176,6 +176,7 @@
       <a class="hide-sm" href="#bounds">Bounds</a>
       <a class="hide-sm" href="#design">Design</a>
       <a class="hide-sm" href="#install">Install</a>
+      <a class="hide-sm" href="#verified">Verified</a>
       <a class="hide-sm" href="#limits">Limitations</a>
       <a class="hide-sm" href="#credits">Credits</a>
       <a class="hide-sm" href="api/xingo_extprec/">API</a>
@@ -407,26 +408,42 @@ assert!(e.<span class="c-cmd">is_certified</span>());   <span class="c-cmt">// �
     </div>
   </section>
 
-  <section id="limits" class="alt">
+  <section id="verified" class="alt">
+    <div class="wrap">
+      <h2>How it was verified</h2>
+      <p class="sub">What was checked before 0.1, and by whom.</p>
+      <div class="grid f3">
+        <div class="card"><div class="ic">🎯</div><h3>Exact oracles</h3><p>Every operation, kernel and elementary function is tested against two exact oracles. The 23 elementary functions were checked again against <code>mpmath</code>: 256 000 points, 130 000 adversarial ones in the subnormal regime and a directed search of 10⁶ points per family, with no violation.</p></div>
+        <div class="card"><div class="ic">🔍</div><h3>Independent review</h3><p>The proofs of the elementary functions were re-derived line by line by three independent reviews. They and the subnormal tests found four defects (<code>acos</code>, <code>acosh</code>, <code>atanh</code> next to ±1; <code>atan2</code> with a subnormal result), all fixed before release.</p></div>
+        <div class="card"><div class="ic">🛡</div><h3>Error bound of a solution</h3><p><code>forward_error_bound</code> was checked on 262 000 adversarial cases in exact arithmetic: no singular matrix certified, no bound below the true error. It certifies the optimal bases of all 93 Netlib LPs.</p></div>
+        <div class="card"><div class="ic">🧪</div><h3>Subnormal regime</h3><p>All 23 elementary functions are tested against the oracle below 2⁻⁹⁶⁸: subnormal arguments, subnormal trailing components and results that underflow.</p></div>
+        <div class="card"><div class="ic">💻</div><h3>Six targets in CI</h3><p>x86_64 Linux and Windows, aarch64 Linux and macOS (NEON), i686 Linux, on stable and on the MSRV; AVX2 + FMA run by hand. The SIMD kernels are compared bit for bit with the scalar reference.</p></div>
+        <div class="card"><div class="ic">🐞</div><h3>A defect the review caught</h3><p>The review of the new bound found an older kernel, <code>dot2_err</code>, returning too small a bound in an overflow corner. It now answers +∞ there; no other bit changed.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="limits">
     <div class="wrap">
       <h2>Known limitations of 0.1</h2>
-      <p class="sub">Each one is recorded, with what was and was not checked, in the solver's decision log.</p>
+      <p class="sub">What is still open. The ones that can be closed have an issue.</p>
       <div class="card scroll">
         <table class="cmp">
           <tbody>
-            <tr><td>The bounds of the elementary functions and of the kernels are proven by first-order analyses written in the chapters of the sources and tested against exact oracles; they are not checked by a proof assistant. (Some bounds of the operations are, in the literature: Muller &amp; Rideau in Coq, Hubrecht &amp; Melquiond with Gappa.) Before 0.1 the proofs of the elementary functions were re-derived by three independent reviews with directed searches against <code>mpmath</code>; they found three defects (<code>acos</code>, <code>acosh</code> and <code>atanh</code> of arguments within a tiny trailing component of ±1), fixed before release, and one gap: for <code>tan</code> in an odd quadrant with a reduced argument below 2⁻³⁰⁰ (never observed, not proven impossible) only the declared bound is proven.</td></tr>
-            <tr><td>The same bits across platforms are a property of the design; they are checked by the mirror's CI on x86_64 Linux and Windows, aarch64 Linux and macOS (NEON) and i686 Linux (32 bits), and were observed by hand on x86_64 Linux with AVX2 + FMA (the AVX2 path); big-endian targets and WebAssembly were not run.</td></tr>
-            <tr><td>The bounds hold in the "safe range" (no overflow; every exact product at least 2⁻⁹⁶⁹ in magnitude, or zero). Below it results stay normalized, with an absolute error of order 2⁻¹⁰⁷⁴; <code>Interval</code> and <code>verify</code> account for underflow explicitly. The elementary functions add η = 2⁻¹⁰⁷⁴ to their bounds for results below 2⁻⁹⁶⁸, and all 23 are tested there against the oracle: subnormal arguments, subnormal trailing components (1 ± δ with δ down to 2⁻¹⁰⁷⁴), underflowing results of <code>exp</code>, <code>exp2</code>, <code>exp_m1</code>, <code>powi</code>, <code>powf</code> and <code>atan2</code>. Tested, not exhausted.</td></tr>
-            <tr><td><code>forward_error_bound</code> bounds the error of <strong>one</strong> solution of <strong>one</strong> square system with point data, in the ∞-norm and by component (no solution sets of interval systems, no 2-norm bounds). It costs at most <code>n</code> transposed solves (at most <code>2n</code> with the default refinement) and is quadratic in <code>n</code> with dense solves: 15 s for the 93 Netlib bases, 21 s at <code>n = 10⁴</code> on a synthetic family. On dense test matrices it certified up to <code>κ(A) ≈ 10¹⁶</code> with refinement — a measurement, not a guarantee; a singular <code>A</code> is never certified. For a polished solution the bound reflects the width of the residual enclosure. Its proof is the chapter's own; before release an independent reviewer checked 262 000 adversarial cases in exact arithmetic and found no false bound. <code>polish</code> stops on a per-row test and often ends <code>Stagnated</code> on bases with degenerate rows (9 of the 93 Netlib), which is harmless.</td></tr>
+            <tr><td>The proofs are written and reviewed, not checked by a proof assistant (<a href="https://github.com/StrategicProjects/xingo-extprec/issues/2">#2</a>).</td></tr>
+            <tr><td>One gap in <code>tan</code>: in an odd quadrant with a reduced argument below 2⁻³⁰⁰ (never observed, not proven impossible) only the declared bound is proven (<a href="https://github.com/StrategicProjects/xingo-extprec/issues/1">#1</a>).</td></tr>
+            <tr><td>Platforms not run: big-endian targets and WebAssembly (<a href="https://github.com/StrategicProjects/xingo-extprec/issues/3">#3</a>).</td></tr>
+            <tr><td>The bounds hold in the "safe range" (no overflow; every exact product at least 2⁻⁹⁶⁹ in magnitude, or zero); below it there is an added absolute error of order 2⁻¹⁰⁷⁴. An operand of the largest magnitude counts as overflow (<a href="https://github.com/StrategicProjects/xingo-extprec/issues/6">#6</a>).</td></tr>
+            <tr><td><code>forward_error_bound</code> covers one square system with point data, in the ∞-norm. It needs up to <code>2n</code> solves and is quadratic in <code>n</code> when they are dense (21 s at n = 10⁴), so it does not reach n ≫ 10⁵ (<a href="https://github.com/StrategicProjects/xingo-extprec/issues/4">#4</a>); for a polished solution it can overestimate the error (<a href="https://github.com/StrategicProjects/xingo-extprec/issues/5">#5</a>).</td></tr>
             <tr><td>No <code>QuadDouble</code>, no elementary functions of intervals, no interval linear algebra (Krawczyk, <code>verifylss</code>), no correctly rounded elementary functions, no complex scalars, no <code>f32</code>.</td></tr>
-            <tr><td>The costs of the elementary functions were measured on two machines only (Apple M2 Pro and Xeon E5-2699 v4), three runs each, neither of them idle; the other costs on the M2 Pro only.</td></tr>
+            <tr><td>The costs were measured on two machines, neither of them idle; the kernel and factorization costs on one only (<a href="https://github.com/StrategicProjects/xingo-extprec/issues/7">#7</a>).</td></tr>
           </tbody>
         </table>
       </div>
     </div>
   </section>
 
-  <section id="credits">
+  <section id="credits" class="alt">
     <div class="wrap">
       <h2>Authorship, credits and disclaimer</h2>
       <p class="sub">Who wrote this, whose work it stands on, and what it does not claim.</p>
