@@ -33,6 +33,8 @@
 //! Run with `cargo run --release -p xingo-extprec --example ft_limit`
 //! (optionally `-- f64` or `-- dd` for one scalar).
 
+#![allow(clippy::disallowed_methods)] // L2.4: libm in tests and examples, never as a reference (clippy.toml)
+
 use xingo_extprec::DoubleDouble;
 use xingo_sparse::{
     Col, ColumnRef, CscMatrix, Lu, LuFactor, LuOptions, Real, RefactorReason, SparseVec, Triplets,

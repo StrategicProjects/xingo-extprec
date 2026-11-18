@@ -567,6 +567,7 @@ impl FromStr for DoubleDouble {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // L2.4 (Chapter 11.11): the tests may use the libm of `f64` (clippy.toml)
 #[allow(clippy::float_cmp)] // the tests compare exact values
 mod tests {
     use super::*;

@@ -9,6 +9,7 @@
 //! appears. The slack the chapter declares is **one ulp**: an operation on
 //! two points returns two adjacent `f64` at most (`one_ulp`).
 
+#![allow(clippy::disallowed_methods)] // L2.4: libm in tests and examples, never as a reference (clippy.toml)
 #![allow(clippy::float_cmp)] // exact comparisons are the subject
 
 use dashu_int::{IBig, UBig};

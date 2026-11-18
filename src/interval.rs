@@ -1152,6 +1152,7 @@ impl fmt::LowerExp for Interval {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // L2.4 (Chapter 11.11): the tests may use the libm of `f64` (clippy.toml)
 mod tests {
     use super::*;
 

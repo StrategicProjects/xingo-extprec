@@ -11,6 +11,7 @@
 //! is `c u² (1 + 8u)`, which covers the full expressions of the chapter's
 //! table (`2u²/(1 − 2u)`, `3u²/(1 − 4u)`, `15u² + 56u³`).
 
+#![allow(clippy::disallowed_methods)] // L2.4: libm in tests and examples, never as a reference (clippy.toml)
 #![allow(clippy::float_cmp)] // exact comparisons are the subject
 
 use core::cmp::Ordering;

@@ -43,6 +43,11 @@ proptest = "1.6"
 # MIT OR Apache-2.0 (checked for 0.6.1). `malachite` is LGPL and forbidden.
 dashu-ratio = { version = "0.6.1", default-features = false, features = ["std"] }
 dashu-int = { version = "0.6.1", default-features = false, features = ["std"] }
+# The primary oracle of the elementary functions (Chapter 11.11, L2.4):
+# arbitrary-precision floating point with exp, ln, the circular and
+# hyperbolic functions and their inverses. MIT OR Apache-2.0 (checked for
+# 0.6.2); it brings `static_assertions` (MIT OR Apache-2.0), nothing else.
+dashu-float = { version = "0.6.2", default-features = false, features = ["std"] }
 
 # The integration test instantiates the factorizations of `xingo-sparse` in
 # `DoubleDouble`.

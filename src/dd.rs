@@ -292,6 +292,105 @@ impl DoubleDouble {
         hi: f64::NAN,
         lo: 0.0,
     };
+    // The 19 stable constants of `core::f64::consts` (Chapter 11.11, L2.4):
+    // each is the nearest double-double `(RN(c), RN(c − RN(c)))`, relative
+    // error at most `u²(1 + u)`, checked bit for bit by the tests against two
+    // independent oracles.
+    /// `π`, the nearest double-double: `3.141592653589793e0 + 1.2246467991473532e-16`.
+    pub const PI: Self = Self {
+        hi: f64::from_bits(0x4009_21fb_5444_2d18),
+        lo: f64::from_bits(0x3ca1_a626_3314_5c07),
+    };
+    /// `2π`, the nearest double-double: `6.283185307179586e0 + 2.4492935982947064e-16`.
+    pub const TAU: Self = Self {
+        hi: f64::from_bits(0x4019_21fb_5444_2d18),
+        lo: f64::from_bits(0x3cb1_a626_3314_5c07),
+    };
+    /// `π/2`, the nearest double-double: `1.5707963267948966e0 + 6.123233995736766e-17`.
+    pub const FRAC_PI_2: Self = Self {
+        hi: f64::from_bits(0x3ff9_21fb_5444_2d18),
+        lo: f64::from_bits(0x3c91_a626_3314_5c07),
+    };
+    /// `π/3`, the nearest double-double: `1.0471975511965979e0 + -1.072081766451091e-16`.
+    pub const FRAC_PI_3: Self = Self {
+        hi: f64::from_bits(0x3ff0_c152_382d_7366),
+        lo: f64::from_bits(0xbc9e_e691_3347_c2a6),
+    };
+    /// `π/4`, the nearest double-double: `7.853981633974483e-1 + 3.061616997868383e-17`.
+    pub const FRAC_PI_4: Self = Self {
+        hi: f64::from_bits(0x3fe9_21fb_5444_2d18),
+        lo: f64::from_bits(0x3c81_a626_3314_5c07),
+    };
+    /// `π/6`, the nearest double-double: `5.235987755982989e-1 + -5.360408832255455e-17`.
+    pub const FRAC_PI_6: Self = Self {
+        hi: f64::from_bits(0x3fe0_c152_382d_7366),
+        lo: f64::from_bits(0xbc8e_e691_3347_c2a6),
+    };
+    /// `π/8`, the nearest double-double: `3.9269908169872414e-1 + 1.5308084989341915e-17`.
+    pub const FRAC_PI_8: Self = Self {
+        hi: f64::from_bits(0x3fd9_21fb_5444_2d18),
+        lo: f64::from_bits(0x3c71_a626_3314_5c07),
+    };
+    /// `1/π`, the nearest double-double: `3.183098861837907e-1 + -1.9678676675182486e-17`.
+    pub const FRAC_1_PI: Self = Self {
+        hi: f64::from_bits(0x3fd4_5f30_6dc9_c883),
+        lo: f64::from_bits(0xbc76_b01e_c541_7056),
+    };
+    /// `2/π`, the nearest double-double: `6.366197723675814e-1 + -3.935735335036497e-17`.
+    pub const FRAC_2_PI: Self = Self {
+        hi: f64::from_bits(0x3fe4_5f30_6dc9_c883),
+        lo: f64::from_bits(0xbc86_b01e_c541_7056),
+    };
+    /// `2/√π`, the nearest double-double: `1.1283791670955126e0 + 1.533545961316588e-17`.
+    pub const FRAC_2_SQRT_PI: Self = Self {
+        hi: f64::from_bits(0x3ff2_0dd7_5042_9b6d),
+        lo: f64::from_bits(0x3c71_ae3a_914f_ed80),
+    };
+    /// `√2`, the nearest double-double: `1.4142135623730951e0 + -9.667293313452913e-17`.
+    pub const SQRT_2: Self = Self {
+        hi: f64::from_bits(0x3ff6_a09e_667f_3bcd),
+        lo: f64::from_bits(0xbc9b_dd34_13b2_6456),
+    };
+    /// `1/√2`, the nearest double-double: `7.071067811865476e-1 + -4.833646656726457e-17`.
+    pub const FRAC_1_SQRT_2: Self = Self {
+        hi: f64::from_bits(0x3fe6_a09e_667f_3bcd),
+        lo: f64::from_bits(0xbc8b_dd34_13b2_6456),
+    };
+    /// `e`, the nearest double-double: `2.718281828459045e0 + 1.4456468917292502e-16`.
+    pub const E: Self = Self {
+        hi: f64::from_bits(0x4005_bf0a_8b14_5769),
+        lo: f64::from_bits(0x3ca4_d57e_e2b1_013a),
+    };
+    /// `log₂ e`, the nearest double-double: `1.4426950408889634e0 + 2.0355273740931033e-17`.
+    pub const LOG2_E: Self = Self {
+        hi: f64::from_bits(0x3ff7_1547_652b_82fe),
+        lo: f64::from_bits(0x3c77_77d0_ffda_0d24),
+    };
+    /// `log₂ 10`, the nearest double-double: `3.321928094887362e0 + 1.661617516973592e-16`.
+    pub const LOG2_10: Self = Self {
+        hi: f64::from_bits(0x400a_934f_0979_a371),
+        lo: f64::from_bits(0x3ca7_f249_5fb7_fa6d),
+    };
+    /// `log₁₀ e`, the nearest double-double: `4.342944819032518e-1 + 1.098319650216765e-17`.
+    pub const LOG10_E: Self = Self {
+        hi: f64::from_bits(0x3fdb_cb7b_1526_e50e),
+        lo: f64::from_bits(0x3c69_5355_baaa_fad3),
+    };
+    /// `log₁₀ 2`, the nearest double-double: `3.010299956639812e-1 + -2.8037281277851704e-18`.
+    pub const LOG10_2: Self = Self {
+        hi: f64::from_bits(0x3fd3_4413_509f_79ff),
+        lo: f64::from_bits(0xbc49_dc1d_a994_fd21),
+    };
+    /// `ln 2`, the nearest double-double: `6.931471805599453e-1 + 2.3190468138462996e-17`.
+    pub const LN_2: Self = Self {
+        hi: f64::from_bits(0x3fe6_2e42_fefa_39ef),
+        lo: f64::from_bits(0x3c7a_bc9e_3b39_803f),
+    };
+    /// `ln 10`, the nearest double-double: `2.302585092994046e0 + -2.1707562233822494e-16`.
+    pub const LN_10: Self = Self {
+        hi: f64::from_bits(0x4002_6bb1_bbb5_5516),
+        lo: f64::from_bits(0xbcaf_48ad_494e_a3e9),
+    };
     /// The bounds of the chapter's table, for the tests of L2.2 (question
     /// E6) and for callers that propagate errors. The subtractions have
     /// the bounds of the additions; `1 / dd` is `dd / dd`.
@@ -373,9 +472,8 @@ impl DoubleDouble {
 
     /// The pair `(hi, lo)` as given, unchecked: for the SIMD kernels, which
     /// store pairs computed by the algorithms of this chapter (Chapter
-    /// 11.6).
+    /// 11.6), and for the literal tables of Chapter 11.11.
     #[inline]
-    #[cfg(feature = "simd")]
     pub(crate) const fn from_raw(hi: f64, lo: f64) -> Self {
         Self { hi, lo }
     }
@@ -715,6 +813,7 @@ impl xingo_sparse::Real for DoubleDouble {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // L2.4 (Chapter 11.11): the tests may use the libm of `f64` (clippy.toml)
 mod tests {
     use super::*;
 

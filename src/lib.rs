@@ -1,8 +1,7 @@
 //! # Chapter 11 — `xingo-extprec`: extended precision and rigorous enclosures
 //!
-//! **Status: complete for v0.1 but for the elementary functions (L2.2a,
-//! L2.2b and L2.3).** The contract was
-//! approved by André on 2026-11-15 (PLAN.md trilha L2.1, D-0081 and
+//! **Status: complete for v0.1 (L2.2a, L2.2b, L2.3 and L2.4).** The
+//! contract was approved by André on 2026-11-15 (PLAN.md trilha L2.1, D-0081 and
 //! D-0109; questions E1–E8 below all answered "yes" as proposed) and lives
 //! in `contracts/xingo-extprec/`. Implemented here: the error-free
 //! transformations (Chapter 11.1), [`DoubleDouble`] with `impl
@@ -11,9 +10,11 @@
 //! run-time dispatch (Chapter 11.5), SIMD through `pulp` (Chapter 11.6) —
 //! the dense kernel [`DdDense`] (Chapter 11.7), the profile of
 //! `LuOptions` for double-double (Chapter 11.8), [`Interval`] (Chapter
-//! 11.9) and the module [`verify`] — rigorous residuals and polishing
-//! (Chapter 11.10). The sections "Corrections to the approved contract"
-//! list what the implementation found wrong in it.
+//! 11.9), the module [`verify`] — rigorous residuals and polishing
+//! (Chapter 11.10) — and the elementary functions of [`DoubleDouble`] with
+//! proven bounds, [`DoubleDouble::FUNCTION_BOUNDS`] (Chapter 11.11; the
+//! contract of L2.4 is D-0121). The sections "Corrections to the approved
+//! contract" list what the implementation found wrong in it.
 //!
 //! ## Purpose
 //! A solver computes in `f64` and must sometimes know *how wrong* it is. A
@@ -71,14 +72,23 @@
 //!    `A x − b` over the containers of `xingo-sparse`, and the polishing
 //!    step (iterative refinement with double-double residuals) around a
 //!    caller-supplied solve.
+//! 7. The elementary functions of [`DoubleDouble`] (Chapter 11.11), with
+//!    the names and special cases of `f64` — `exp`, `exp2`, `exp_m1`,
+//!    `ln`, `ln_1p`, `log2`, `log10`, `powi`, `powf`, `sin`, `cos`, `tan`,
+//!    `sin_cos`, `asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, `tanh`,
+//!    `asinh`, `acosh`, `atanh` — each with a declared error bound proven in
+//!    the chapter ([`DoubleDouble::FUNCTION_BOUNDS`], [`FunctionBound`]),
+//!    and the 19 constants of `core::f64::consts` (`DoubleDouble::PI`, …).
+//!    No `f64` transcendental function of `std` is used (their precision is
+//!    unspecified); the same bits on every platform.
 //!
 //! ## Out of scope (D-0081, restated)
 //! Arbitrary precision (MPFR-like); complex scalars; `f32`; elementary
-//! functions of double-doubles other than `sqrt` (no `exp`, `log`,
-//! trigonometry — a linear solver needs none; question E7); interval
-//! *linear algebra* (interval LU, Krawczyk, verified solution of linear
-//! systems: Rump's `verifylss`) — v0.1 verifies residuals, not solution
-//! sets; `QuadDouble` (question E4).
+//! functions of intervals (D-0121: they would need enclosures, not bounds);
+//! correctly rounded elementary functions; interval *linear algebra*
+//! (interval LU, Krawczyk, verified solution of linear systems: Rump's
+//! `verifylss`) — v0.1 verifies residuals, not solution sets; `QuadDouble`
+//! (question E4).
 //!
 //! ## Algorithms and their bounds
 //! All bounds hold in the absence of overflow and of underflow in the
@@ -396,15 +406,43 @@
 //!   `impl From<f64> for Interval` (`ENTIRE` for a NaN or an infinity,
 //!   where `Interval::point` panics).
 //!
+//! ## Corrections to the approved contract (L2.4, D-0121)
+//! Chapter 11.11 states each in place; in short:
+//!
+//! * **Argument reduction of the circular functions.** Payne–Hanek in
+//!   integer arithmetic for every `|x| > π/4`, instead of Cody–Waite with
+//!   `π/2` in five parts below `2⁵²`: the subtractions of Cody–Waite in
+//!   double-double arithmetic err relative to their own results, which are
+//!   about `k 2⁻⁵³`, and the floor `2⁻²⁰⁰` of the declared bound could not
+//!   be proven for them. The bound is the contract's.
+//! * **Algorithms.** `exp` is table-driven (`2^(j/64)`, Tang) instead of
+//!   `m` halvings and squarings, whose error grows with `m` in the proof;
+//!   `ln` reduces by `c = 1 + j/64` with `j` truncated (no cancellation) and
+//!   sums the series of `ln(1 + z)` instead of `2 atanh` of a quotient (D2's
+//!   `15u²` would not fit `8u²`), with two extra tables for the cases where
+//!   `e ln 2` and `ln y` cancel; `exp_m1` reduces small arguments exactly by
+//!   `N/64`; `atan` uses a table of 144 points by binade instead of `j/32`;
+//!   `ln_1p` adds Kahan's correction with an `f64` addend whose rounding is
+//!   proven (Lemma S). The private tables differ accordingly, plus `3π/4`
+//!   for `atan2(±∞, −∞)`.
+//! * **`powf`.** The growth coefficient is `11`, not `8`: the proof gives
+//!   `10.7` (the logarithm's own bound is multiplied by `|y ln x|`).
+//! * **`tan` in `FUNCTION_BOUNDS`.** The floor `2⁻²⁰⁰(1 + tan²x)` is written
+//!   as the growth term `2⁻⁹⁴ G u²|tan x|` with `G = |tan x|` (the string
+//!   `"|tan x|"`) plus the absolute `2⁻²⁰⁰`.
+//! * **The second oracle** works on dyadic rationals over `dashu-int`
+//!   (outward rounding after each operation) rather than on `dashu-ratio`;
+//!   it is equally independent of `dashu-float` and much faster.
+//!
 //! ## Plan
 //! L2.2a: EFTs, `DoubleDouble`, `impl Real`, scalar kernels, proptests
 //! against `dashu`, `Lu<DoubleDouble>` and `SupernodalLdl<DoubleDouble>`
 //! as integration tests. L2.2b: `pulp` kernels, `DdDense`, the profile of
 //! `LuOptions`. L2.3 (this state): `Interval`, `verify`, polishing;
 //! residual certificates on the Netlib bases (an integration test of
-//! `xingo-simplex`, which this crate does not depend on). Still to come:
-//! `--exact-check` in the CLI, which is to use the enclosures before the
-//! rational check, and the elementary functions (L2.4).
+//! `xingo-simplex`, which this crate does not depend on). L2.5:
+//! `--exact-check` in the CLI uses the enclosures before the rational
+//! check. L2.4: the elementary functions (Chapter 11.11).
 //!
 //! ## References
 //! Dekker, "A floating-point technique for extending the available
@@ -439,6 +477,7 @@ mod decimal;
 #[cfg(feature = "sparse")]
 mod dense;
 mod eft;
+mod elementary;
 mod interval;
 pub mod kernels;
 #[cfg(feature = "sparse")]
@@ -453,4 +492,5 @@ pub use decimal::ParseDoubleDoubleError;
 #[cfg(feature = "sparse")]
 pub use dense::DdDense;
 pub use eft::{fast_two_sum, two_prod, two_sum};
+pub use elementary::FunctionBound;
 pub use interval::{Interval, InvalidInterval};

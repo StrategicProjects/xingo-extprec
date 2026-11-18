@@ -6,6 +6,7 @@
 //! within its stated accuracy; and Algorithm P reaches double-double
 //! accuracy on an ill-conditioned system, with its result certified.
 
+#![allow(clippy::disallowed_methods)] // L2.4: libm in tests and examples, never as a reference (clippy.toml)
 #![allow(clippy::float_cmp)] // exact comparisons are the subject
 
 use dashu_int::{IBig, UBig};

@@ -1,0 +1,15 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 025fb32f8c0bc94ececb0488ad01a72ff97e9be08784faf723fbc93cbbb118e1 # shrinks to x = DoubleDouble { hi: 1.152921504606847e18, lo: -13.510947288955423 }
+cc c63bd13915b8762f9c33b1a794af136501c7a7833bd775238ae59b88acc3914c # shrinks to x = DoubleDouble { hi: -1.229225838144866, lo: 0.0 }
+cc a23f851f3593eef3a1edebe0b1e1e0ac349fbae4e5d205e25397911d19d8ca3b # shrinks to x = DoubleDouble { hi: 0.741214788936971, lo: 0.0 }
+cc 3b8811974aa90242965f123465cc542622b9e9d6ba4cb274ed84c97a5f8bf8ed # shrinks to x = DoubleDouble { hi: 1.8775426254810164, lo: 0.0 }
+cc 88b40120d6c2e106bf33ee328cf1356a71cbefa9a10b3a315114b23a349bf23a # shrinks to x = DoubleDouble { hi: 1.00006103515625, lo: 0.0 }
+cc 814d8dacb08276c2dbe0c264a1a4c517617c9e822a8cc593503d9fe6f305f909 # shrinks to x = DoubleDouble { hi: -1.0717673092973301e141, lo: 0.0 }, y = DoubleDouble { hi: 0.0, lo: 0.0 }, n = 0
+cc 205c0e74ea73940dcde9957e488593347af70ddbe62e9f74bc1e247fe0246c41 # shrinks to x = DoubleDouble { hi: 723.9220269716142, lo: 0.0 }, y = DoubleDouble { hi: 0.8813589336358032, lo: 0.0 }
+cc 79d527603d90607870c8c9cd3392feb0a286ce571dfa5f2d5faee0ce2602f277 # shrinks to x = DoubleDouble { hi: -0.021104008822229695, lo: 1.2612152025475935e-18 }
+cc aa5721128b8867c67c33fa478ce569162ef71241e5049eabfe30ccac10017e89 # shrinks to (x, n) = (DoubleDouble { hi: 0.49999999999999994, lo: 5.099870858917039e-18 }, -983)

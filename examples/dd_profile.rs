@@ -11,6 +11,8 @@
 //!
 //! Run with `cargo run --release -p xingo-extprec --example dd_profile`.
 
+#![allow(clippy::disallowed_methods)] // L2.4: libm in tests and examples, never as a reference (clippy.toml)
+
 use xingo_extprec::{DdDense, DoubleDouble};
 use xingo_sparse::{
     Amd, Col, ColumnRef, CscMatrix, KktForm, KktSolver, Lu, LuError, LuFactor, LuOptions,
