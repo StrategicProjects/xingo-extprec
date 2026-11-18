@@ -5,6 +5,17 @@ All notable changes to `xingo-extprec` are recorded here. The format follows
 follows [Semantic Versioning](https://semver.org/); before 1.0, a minor
 version may change the public API.
 
+## [0.1.1] — 2026-11-18
+
+### Changed
+
+* Documentation only: the README (and the landing page) gain the section
+  "How it was verified" (exact oracles, independent reviews, subnormal
+  regime, targets of the CI), taken out of the list of known limitations;
+  each limitation now states only what is still open and links to its
+  issue in the repository. The README carries the Zenodo DOI, which did
+  not exist when 0.1.0 was packaged. No change to the code.
+
 ## [0.1.0] — 2026-11-18
 
 The first release: the extended-precision layer of the Xingó solver,
@@ -105,4 +116,5 @@ a guarantee, and its proof is the chapter's own (reviewed before release by
 an independent reviewer with 262 000 adversarial cases checked in exact
 arithmetic, no false bound found).
 
+[0.1.1]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.1
 [0.1.0]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.0

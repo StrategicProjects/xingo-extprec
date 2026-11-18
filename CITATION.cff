@@ -12,7 +12,7 @@ license:
 repository-code: "https://github.com/StrategicProjects/xingo-extprec"
 url: "https://strategicprojects.github.io/xingo-extprec/"
 doi: 10.5281/zenodo.24354162
-version: 0.1.0
+version: 0.1.1
 date-released: 2026-11-18
 keywords:
   - double-double arithmetic

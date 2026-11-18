@@ -8,7 +8,7 @@
 # must stay equal to the workspace's.
 [package]
 name = "xingo-extprec"
-version = "0.1.0"
+version = "0.1.1"
 description = "Extended precision for numerical linear algebra: double-double arithmetic with proven error bounds, compensated kernels and rigorous interval enclosures of residuals"
 edition = "2024"
 rust-version = "1.90"
