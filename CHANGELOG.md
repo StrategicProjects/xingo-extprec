@@ -75,7 +75,10 @@ optionally, `xingo-sparse` 0.4.
 ### Known limitations
 
 See "Known limitations" in the README: the proofs of the bounds are written
-analyses, not machine-checked; the same bits across platforms were observed
+analyses, not machine-checked (those of the elementary functions were
+re-derived by three independent reviews before this release; for `tan` with
+a reduced argument below `2⁻³⁰⁰` in an odd quadrant, never observed, only the
+declared bound is proven); the same bits across platforms were observed
 on aarch64 (NEON), x86_64 (scalar and AVX2 + FMA) and i686, on Linux,
 macOS and Windows, not elsewhere; the
 subnormal regime of the elementary functions is tested for all 23 (subnormal

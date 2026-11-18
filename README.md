@@ -281,7 +281,14 @@ an `f64` (`x += 1.0`) for `DoubleDouble` (`Interval` has both); `floor`,
    Each proven constant of Chapter 11.11 is honest up to a factor
    `1 + 2⁻⁸⁰` (the neglected products of errors), and every declared
    constant exceeds it by far more (the smallest margin is `log2` and
-   `log10`: 12 declared, 11.7 proven).
+   `log10`: 12 declared, 11.7 proven). Before 0.1 the proofs of Chapter
+   11.11 were re-derived line by line by three independent reviews, each
+   with a directed search against `mpmath`: they found three defects
+   (`acos` and `acosh` of `1 ∓ δ` and `atanh` of `±(1 − δ)` with a tiny
+   trailing component `δ`), fixed before release, and one gap: for `tan`
+   in an odd quadrant with a reduced argument below `2⁻³⁰⁰` — never
+   observed, the smallest found being `2⁻¹¹⁸`, but not proven impossible
+   — only the declared bound is proven, not the sharper one of the chapter.
 2. **Same bits across platforms: observed on the targets of the CI.** The
    design gives the same bits on every target; the test suite, with the
    golden bits of the elementary functions and the SIMD kernels compared
