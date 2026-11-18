@@ -1462,6 +1462,600 @@ fn all_functions() -> Vec<Fun> {
 }
 
 // ---------------------------------------------------------------------
+// The subnormal regime: arguments, trailing components or results below
+// 2⁻⁹⁶⁸, where the bound of Chapter 11.11 is `c u² |f| + η`
+// ---------------------------------------------------------------------
+
+/// `η = 2⁻¹⁰⁷⁴`, the smallest positive subnormal.
+const ETA: f64 = f64::from_bits(1);
+
+/// The positive arguments of the subnormal regime: subnormal leading
+/// components; normal leading components with a subnormal or zero trailing
+/// one; `2⁻¹⁰²²`, `2⁻⁹⁶⁸` and their neighbours; and the threshold `2⁻⁴⁰⁰`
+/// of the series, for contrast.
+fn tiny_arguments() -> Vec<Dd> {
+    let mut v = Vec::new();
+    for m in [
+        1_u64,
+        2,
+        3,
+        5,
+        7,
+        1000,
+        123_456_789,
+        (1 << 51) + 1,
+        (1 << 52) - 1,
+    ] {
+        v.push(d(f64::from_bits(m)));
+    }
+    for k in [
+        -1074, -1073, -1060, -1030, -1023, -1022, -1021, -1000, -969, -968, -967, -960, -900, -600,
+        -401, -400, -399,
+    ] {
+        let x = p2(k);
+        for y in [x, x * 1.5, x.next_up(), x.next_down()] {
+            if y > 0.0 {
+                v.push(d(y));
+            }
+        }
+    }
+    // Normal leading components with subnormal trailing ones.
+    for h in [
+        1.25 * p2(-1000),
+        1.75 * p2(-968),
+        p2(-968),
+        (1.0 / 3.0) * p2(-960),
+        1.5 * p2(-1010),
+        p2(-1021) * 1.75,
+        (2.0 / 3.0) * p2(-900),
+    ] {
+        v.push(d(h));
+        for l in [ETA, 3.0 * ETA, p2(-1060), p2(-1022) - ETA, p2(-1030)] {
+            for l in [l, -l] {
+                let x = Dd::from_sum(h, l);
+                if x.hi() == h {
+                    v.push(x);
+                }
+            }
+        }
+    }
+    // The dd ulps around 2⁻⁹⁶⁸ and 2⁻¹⁰²².
+    for x in [p2(-968), p2(-1022), p2(-1000)] {
+        for k in 1..=3 {
+            let l = f64::from(k) * ETA;
+            v.push(Dd::from_sum(x, l));
+            v.push(Dd::from_sum(x, -l));
+        }
+    }
+    v
+}
+
+/// `1 ± δ` with a trailing component in the subnormal regime: the arguments
+/// at which `acos`, `acosh`, `atanh` and the logarithms meet a tiny
+/// difference from 1.
+fn near_one_arguments() -> Vec<Dd> {
+    let mut v = Vec::new();
+    for delta in [
+        ETA,
+        3.0 * ETA,
+        1000.0 * ETA,
+        p2(-1060),
+        p2(-1030),
+        p2(-1022) - ETA,
+        p2(-1022),
+        p2(-1000),
+        1.5 * p2(-970),
+        p2(-969),
+        p2(-968),
+        p2(-967),
+        p2(-940),
+        p2(-900),
+        p2(-800),
+        p2(-600),
+        p2(-401),
+        p2(-399),
+    ] {
+        v.push(Dd::ONE + delta);
+        v.push(Dd::ONE - delta);
+    }
+    v
+}
+
+/// Whether the oracle and the function are defined at `x` (the special
+/// cases are tested elsewhere).
+fn in_domain(name: &str, x: Dd) -> bool {
+    let a = x.abs();
+    match name {
+        "ln" | "log2" | "log10" => x.hi() > 0.0,
+        "ln_1p" => x > -Dd::ONE,
+        "asin" | "acos" => a <= Dd::ONE,
+        "atanh" => a < Dd::ONE,
+        "acosh" => x >= Dd::ONE,
+        _ => true,
+    }
+}
+
+/// The failures of `fun` over `xs` (in its domain), with the error in `u²`
+/// and, below `2⁻⁹⁶⁸`, in `η`; and every output checked for (D1)/(D2).
+fn sweep(fun: &Fun, xs: &[Dd]) -> Vec<String> {
+    let mut bad = Vec::new();
+    for &x in xs {
+        if !in_domain(fun.name, x) {
+            continue;
+        }
+        let z = (fun.dd)(x);
+        if let Err(e) = z.check_invariants() {
+            bad.push(format!("{}({x:?}) = {z:?}: {e}", fun.name));
+            continue;
+        }
+        if let Err(e) = check_at(fun, x, growth(fun, x)) {
+            let f = exact(fun, x);
+            let eta = if z.is_finite() {
+                Dy::dd(z.hi(), z.lo()).sub(&f).abs().scale(1074).approx()
+            } else {
+                f64::INFINITY
+            };
+            bad.push(format!("{e}; {eta:.3e} η"));
+        }
+    }
+    bad
+}
+
+fn assert_none(bad: &[String]) {
+    assert!(
+        bad.is_empty(),
+        "{} failures:\n{}",
+        bad.len(),
+        bad.iter().take(20).cloned().collect::<Vec<_>>().join("\n")
+    );
+}
+
+/// The functions that are `x` to first order at 0, and the odd ones among
+/// them.
+const NEAR_X: [Fun; 10] = [
+    SIN, TAN, ASIN, ATAN, SINH, TANH, ASINH, ATANH, EXP_M1, LN_1P,
+];
+
+fn is_odd_fun(name: &str) -> bool {
+    !matches!(name, "exp_m1" | "ln_1p")
+}
+
+#[test]
+fn subnormal_arguments_of_the_functions_near_x() {
+    let xs = tiny_arguments();
+    let signed: Vec<Dd> = xs.iter().flat_map(|&x| [x, -x]).collect();
+    let mut bad = Vec::new();
+    for f in &NEAR_X {
+        bad.extend(sweep(f, &signed));
+        for &x in &signed {
+            let z = (f.dd)(x);
+            // Below 2⁻⁴⁰⁰ each of them returns x itself (the first term of
+            // its series; Chapter 11.11, E3, L4, S2, T1 and the
+            // compositions), signed zero and all.
+            if x.hi().abs() < p2(-400) && !same(z, x) {
+                bad.push(format!("{}({x:?}) = {z:?}, not x", f.name));
+            }
+            if is_odd_fun(f.name) && !same((f.dd)(-x), -z) {
+                bad.push(format!("{} not odd at {x:?}", f.name));
+            }
+        }
+    }
+    assert_none(&bad);
+}
+
+#[test]
+fn subnormal_arguments_of_the_functions_near_one() {
+    let xs = tiny_arguments();
+    let signed: Vec<Dd> = xs.iter().flat_map(|&x| [x, -x]).collect();
+    let mut bad = Vec::new();
+    for f in [&COS, &COSH, &EXP, &EXP2, &ACOS] {
+        bad.extend(sweep(f, &signed));
+    }
+    for &x in &signed {
+        for f in [Dd::cos, Dd::cosh] {
+            if bits(f(-x)) != bits(f(x)) {
+                bad.push(format!("not even at {x:?}"));
+            }
+        }
+        // cos, cosh, exp, exp2 have the leading component 1 there.
+        for f in [Dd::cos, Dd::cosh, Dd::exp, Dd::exp2] {
+            if f(x).hi() != 1.0 {
+                bad.push(format!("{:?} at {x:?}", f(x)));
+            }
+        }
+    }
+    assert_none(&bad);
+}
+
+#[test]
+fn logarithms_of_subnormal_arguments() {
+    let xs = tiny_arguments();
+    let mut bad = Vec::new();
+    for f in [&LN, &LOG2, &LOG10] {
+        bad.extend(sweep(f, &xs));
+    }
+    // Every subnormal power of two, and its neighbours.
+    let mut ys = Vec::new();
+    for k in -1074..=-1022 {
+        let x = p2(k);
+        ys.extend([x, x.next_up(), 3.0 * x].map(d));
+    }
+    for f in [&LN, &LOG2, &LOG10] {
+        bad.extend(sweep(f, &ys));
+    }
+    assert_none(&bad);
+}
+
+#[test]
+fn trailing_components_near_one() {
+    let xs = near_one_arguments();
+    let signed: Vec<Dd> = xs.iter().flat_map(|&x| [x, -x]).collect();
+    let mut bad = Vec::new();
+    for f in all_functions() {
+        bad.extend(sweep(&f, &signed));
+    }
+    let (a, b) = (Dd::ONE + ETA, Dd::ONE - ETA);
+    for z in [a.sin_cos().0, a.sin_cos().1, b.sin_cos().0, b.sin_cos().1] {
+        if z.check_invariants().is_err() {
+            bad.push(format!("sin_cos: {z:?}"));
+        }
+    }
+    assert_none(&bad);
+}
+
+#[test]
+fn sin_cos_of_subnormal_arguments() {
+    for x in tiny_arguments().into_iter().flat_map(|x| [x, -x]) {
+        let (s, c) = x.sin_cos();
+        assert_eq!((bits(s), bits(c)), (bits(x.sin()), bits(x.cos())), "{x:?}");
+        assert!(s.check_invariants().is_ok() && c.check_invariants().is_ok());
+    }
+}
+
+#[test]
+fn results_below_the_normal_range() {
+    let mut bad = Vec::new();
+    // exp near −745 (result η), across −708.4 (2⁻¹⁰²²) and −671 (2⁻⁹⁶⁸).
+    let mut xs = Vec::new();
+    for k in 0..=600 {
+        xs.push(d(-670.0 - 0.125 * f64::from(k)));
+    }
+    for x in [
+        -670.96, -671.0, -708.39, -708.4, -744.44, -745.0, -745.1, -745.13, -745.133_2, -745.2,
+    ] {
+        xs.extend(around(d(x), 2));
+    }
+    bad.extend(sweep(&EXP, &xs));
+    // exp_m1 there: the pair (−1, eˣ).
+    bad.extend(sweep(&EXP_M1, &xs));
+    // exp2 from −967 to −1076, at the integers, the halves and between.
+    let mut ys = Vec::new();
+    for k in 0..=(109 * 16) {
+        ys.push(d(-967.0 - f64::from(k) / 16.0));
+    }
+    for x in [-968.0, -1022.0, -1074.0, -1075.0] {
+        ys.extend(around(d(x), 2));
+        ys.push(Dd::from_sum(x, 0.3));
+        ys.push(Dd::from_sum(x, -0.3));
+    }
+    bad.extend(sweep(&EXP2, &ys));
+    assert_none(&bad);
+    // No spurious zero or NaN where the result is at least η.
+    for x in [-745.13, -744.0, -720.0, -709.0] {
+        assert!(d(x).exp().hi() > 0.0, "exp({x})");
+    }
+    for k in -1074..=-1022 {
+        let z = d(f64::from(k) + 0.25).exp2();
+        assert!(
+            z.hi() > 0.0 && z.check_invariants().is_ok(),
+            "exp2({k} + 1/4) = {z:?}"
+        );
+    }
+}
+
+/// The `n` with `|x|ⁿ ≈ 2ᵗ`.
+fn exponent_for(x: Dd, t: f64) -> i32 {
+    (t / x.hi().abs().log2()).round() as i32
+}
+
+#[test]
+fn powers_with_subnormal_results() {
+    let mut bad = Vec::new();
+    let bases = [
+        Dd::ONE / 3.0,
+        -Dd::ONE / 3.0,
+        d(0.6),
+        d(2.1),
+        -d(2.1),
+        Dd::PI,
+        Dd::E,
+        d(0.999_999),
+        d(1.000_001),
+        d(1e-300),
+        d(1e300),
+        Dd::from_sum(1.25 * p2(-1000), 3.0 * ETA),
+    ];
+    for x in bases {
+        for k in 0..=50 {
+            let t = -960.0 - 2.4 * f64::from(k);
+            for n in [exponent_for(x, t), -exponent_for(x, t)] {
+                let exact = x.hi().abs().log2() * f64::from(n);
+                if exact < -950.0
+                    && let Err(e) = check_powi(x, n)
+                {
+                    bad.push(e);
+                }
+            }
+            // powf with y not an integer (a positive base).
+            let ax = x.abs();
+            let y = Dd::from_f64(t) / ax.ln() * Dd::LN_2;
+            if let Err(e) = check_powf(ax, y) {
+                bad.push(e);
+            }
+        }
+    }
+    // Subnormal bases.
+    for m in [1_u64, 3, 1000, 1 << 40, (1 << 51) + 7, (1 << 52) - 1] {
+        for s in [1.0, -1.0] {
+            let x = d(s * f64::from_bits(m));
+            for n in [2, 3, 7, -2] {
+                let z = x.powi(n);
+                // |x|ⁿ < η/2 for n ≥ 2, > Ω for n ≤ −2: zero or infinity,
+                // signed by the parity of n.
+                let neg = s < 0.0 && n % 2 != 0;
+                let want = if n > 0 { Dd::ZERO } else { Dd::INFINITY };
+                if !same(z, if neg { -want } else { want }) {
+                    bad.push(format!("powi({x:?}, {n}) = {z:?}"));
+                }
+            }
+            if x.hi().abs() >= p2(-1023) {
+                if let Err(e) = check_powi(x, -1) {
+                    bad.push(e);
+                }
+            } else if x.powi(-1).abs() != Dd::INFINITY {
+                bad.push(format!("powi({x:?}, -1) = {:?}", x.powi(-1)));
+            }
+            for y in [0.5, 0.25, 1.0 / 3.0, 0.9, -0.5, -0.9, 1.0001, 2.5] {
+                if let Err(e) = check_powf(x.abs(), d(y)) {
+                    bad.push(e);
+                }
+            }
+            if let Err(e) = check_powf(x, d(-1.0)) {
+                bad.push(e);
+            }
+        }
+    }
+    assert_none(&bad);
+}
+
+#[test]
+fn atan2_with_tiny_operands() {
+    let tiny = tiny_arguments();
+    let others = [
+        d(1.0),
+        d(3.0),
+        Dd::ONE / 3.0,
+        d(p2(-500)),
+        d(p2(500)),
+        d(1e300),
+        d(f64::MAX),
+    ];
+    let mut bad = Vec::new();
+    for (i, &a) in tiny.iter().enumerate() {
+        let mut partners: Vec<Dd> = others.to_vec();
+        partners.extend(tiny.iter().skip(i % 5).step_by(5));
+        for b in partners {
+            for (sa, sb) in [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)] {
+                let (y, x) = (a * sa, b * sb);
+                for (y, x) in [(y, x), (x, y)] {
+                    let z = y.atan2(x);
+                    if let Err(e) = check_atan2(y, x) {
+                        bad.push(e);
+                    }
+                    // The sign of the result is the sign of y, zeros included.
+                    if z.hi().is_sign_negative() != y.hi().is_sign_negative()
+                        || z.check_invariants().is_err()
+                    {
+                        bad.push(format!("atan2({y:?}, {x:?}) = {z:?}"));
+                    }
+                }
+            }
+        }
+    }
+    assert_none(&bad);
+}
+
+/// A subnormal `f64` of either sign, zero excluded.
+fn subnormal() -> impl Strategy<Value = Dd> {
+    (1_u64..(1 << 52), any::<bool>()).prop_map(|(m, neg)| {
+        let x = d(f64::from_bits(m));
+        if neg { -x } else { x }
+    })
+}
+
+/// The arguments of the subnormal regime: subnormal leading components,
+/// and normal ones below `2⁻⁹⁰⁰` with a trailing component that is often
+/// subnormal.
+fn tiny_dd() -> impl Strategy<Value = Dd> {
+    prop_oneof![
+        subnormal(),
+        log_uniform(-1074, -900),
+        log_uniform(-1000, -960)
+    ]
+}
+
+/// `1 ± δ`, `δ` subnormal or below `2⁻⁹⁰⁰`.
+fn near_one() -> impl Strategy<Value = Dd> {
+    tiny_dd().prop_map(|t| Dd::ONE + t.hi())
+}
+
+proptest! {
+    #![proptest_config(config())]
+
+    #[test]
+    fn tiny_arguments_near_x(x in tiny_dd()) {
+        for f in &NEAR_X {
+            let r = sweep(f, &[x]);
+            prop_assert!(r.is_empty(), "{:?}", r);
+            let z = (f.dd)(x);
+            // x itself (the sign of a zero trailing component is not
+            // specified, invariant D1).
+            prop_assert!(same(z, x) || x.hi().abs() >= p2(-400), "{}({:?}) = {:?}", f.name, x, z);
+            if is_odd_fun(f.name) {
+                prop_assert!(same((f.dd)(-x), -z), "{} not odd at {:?}", f.name, x);
+            }
+        }
+    }
+
+    #[test]
+    fn tiny_arguments_near_one(x in tiny_dd()) {
+        for f in [&COS, &COSH, &EXP, &EXP2, &ACOS] {
+            let r = sweep(f, &[x]);
+            prop_assert!(r.is_empty(), "{:?}", r);
+        }
+        prop_assert_eq!(bits(x.cos()), bits((-x).cos()));
+        prop_assert_eq!(bits(x.cosh()), bits((-x).cosh()));
+        let (s, c) = x.sin_cos();
+        prop_assert_eq!((bits(s), bits(c)), (bits(x.sin()), bits(x.cos())));
+    }
+
+    #[test]
+    fn logarithms_of_tiny_arguments(x in tiny_dd().prop_map(Dd::abs)) {
+        for f in [&LN, &LOG2, &LOG10] {
+            let r = sweep(f, &[x]);
+            prop_assert!(r.is_empty(), "{:?}", r);
+        }
+    }
+
+
+    #[test]
+    fn exponentials_with_tiny_results(
+        x in uniform(-745.2, -670.0),
+        y in uniform(-1076.0, -967.0),
+    ) {
+        for (f, v) in [(&EXP, x), (&EXP_M1, x), (&EXP2, y)] {
+            let r = sweep(f, &[v]);
+            prop_assert!(r.is_empty(), "{:?}", r);
+        }
+    }
+
+    #[test]
+    fn powers_with_tiny_results(
+        x in prop_oneof![uniform(0.5, 0.99), uniform(1.01, 4.0), log_uniform(-60, 60)],
+        t in -1080.0..-960.0_f64,
+        neg in any::<bool>(),
+    ) {
+        let n = exponent_for(x, t);
+        prop_assume!(x.hi().abs().log2() * f64::from(n) < -950.0);
+        let xs = if neg { -x } else { x };
+        prop_assert!(check_powi(xs, n).is_ok(), "{:?}", check_powi(xs, n));
+        let ax = x.abs();
+        let y = Dd::from_f64(t) / ax.ln() * Dd::LN_2;
+        prop_assert!(check_powf(ax, y).is_ok(), "{:?}", check_powf(ax, y));
+    }
+
+    #[test]
+    fn powers_of_tiny_bases(x in tiny_dd().prop_map(Dd::abs), y in -0.99..0.99_f64) {
+        prop_assume!(y != 0.0);
+        prop_assert!(check_powf(x, d(y)).is_ok(), "{:?}", check_powf(x, d(y)));
+    }
+
+    #[test]
+    fn atan2_of_tiny(
+        y in tiny_dd(),
+        x in prop_oneof![tiny_dd(), log_uniform(-60, 60), log_uniform(400, 1023)],
+    ) {
+        for (a, b) in [(y, x), (x, y)] {
+            prop_assert!(check_atan2(a, b).is_ok(), "{:?}", check_atan2(a, b));
+            let z = a.atan2(b);
+            prop_assert!(z.hi().is_sign_negative() == a.hi().is_sign_negative() && z.check_invariants().is_ok());
+        }
+    }
+}
+
+proptest! {
+    // The oracle works at more than 1 300 bits here (the argument spans
+    // up to 1 075): fewer cases. The other functions at `1 ± δ` are swept
+    // by `trailing_components_near_one`.
+    #![proptest_config(ProptestConfig::with_cases(if cfg!(debug_assertions) { 48 } else { 400 }))]
+
+    #[test]
+    fn one_plus_tiny(x in near_one()) {
+        for f in [
+            &LN, &LOG2, &LOG10, &LN_1P, &ASIN, &ACOS, &ATAN, &ATANH, &ACOSH, &ASINH, &SINH, &COSH,
+            &TANH,
+        ] {
+            let r = sweep(f, &[x, -x]);
+            prop_assert!(r.is_empty(), "{:?}", r);
+        }
+    }
+
+    /// The compositions of two arguments at `1 ± δ`: `atan2` near the
+    /// diagonal, and `powf` with `y ln x` of order 1 although `ln x ≈ ±δ`
+    /// is minuscule.
+    #[test]
+    fn compositions_near_one(x in near_one(), t in -500.0..500.0_f64) {
+        for (a, b) in [(x, Dd::ONE), (Dd::ONE, x), (x, -Dd::ONE), (-x, x)] {
+            prop_assert!(check_atan2(a, b).is_ok(), "{:?}", check_atan2(a, b));
+        }
+        let delta = x.lo();
+        let y = t / delta;
+        if y.is_finite() && y.abs() < p2(1000) {
+            prop_assert!(check_powf(x, d(y)).is_ok(), "{:?}", check_powf(x, d(y)));
+        }
+        prop_assert!(check_powf(x, d(t)).is_ok(), "{:?}", check_powf(x, d(t)));
+    }
+}
+
+/// A result below `2⁻⁹⁶⁸` of `atan2` that two roundings (the scaled `y`,
+/// subnormal, and the unscaled quotient) put `1.04η` away (found by
+/// `atan2_of_tiny` on x86_64); step Q1 rounds once.
+#[test]
+fn atan2_rounds_a_subnormal_quotient_once() {
+    let y = Dd::from_parts(1.512_792_663_265_190_3e-295, -7.815_437_673_005e-312);
+    let x = Dd::from_parts(23_118_976_389_754.613, 0.0);
+    for (sy, sx) in [(1.0, 1.0), (-1.0, 1.0)] {
+        let r = check_atan2(y * sy, x * sx);
+        assert!(r.is_ok(), "{r:?}");
+    }
+    let z = y.atan2(x);
+    let f =
+        support::dy(&support::fdd(y.hi(), y.lo(), 600).atan2(&support::fdd(x.hi(), x.lo(), 600)));
+    let err = Dy::dd(z.hi(), z.lo()).sub(&f).abs();
+    assert!(err.le(&Dy::pow2(-1074)), "{} η", err.scale(1074).approx());
+}
+
+/// The three counterexamples of the review of Chapter 11.11 (X0.2): the
+/// square root of Algorithm R below `2⁻⁹⁶⁸` (acos, acosh), and the quotient
+/// `2a/(1 − a)` beyond `Ω` (atanh). Fixed by step W and by the second form
+/// of `atanh`.
+#[test]
+fn regressions_of_the_subnormal_regime() {
+    let one = f64::from_bits(0x3ff0_0000_0000_0000);
+    // acos(1, −δ), δ = 0x299999a · η: exact 2.07612716131…e−158.
+    let x = Dd::from_parts(one, f64::from_bits(0x8000_0000_0299_999a));
+    let z = x.acos();
+    assert!((z.hi() - 2.076_127_161_31e-158).abs() < 1e-168, "{z:?}");
+    check(&ACOS, x);
+    // acosh(1, +δ): the same square root.
+    let x = Dd::from_parts(one, f64::from_bits(0x0000_0000_0299_999a));
+    let z = x.acosh();
+    assert!((z.hi() - 2.076_127_161_31e-158).abs() < 1e-168, "{z:?}");
+    check(&ACOSH, x);
+    // atanh(±(1, −η)) = ±372.5666…, not ±∞.
+    let x = Dd::from_parts(one, -ETA);
+    for v in [x, -x] {
+        let z = v.atanh();
+        assert!(
+            z.is_finite() && (z.hi().abs() - 372.566_609_550_970_6).abs() < 1e-9,
+            "{z:?}"
+        );
+        check(&ATANH, v);
+        assert!(same((-v).atanh(), -z));
+    }
+}
+
+// ---------------------------------------------------------------------
 // Survey (L2.4 acceptance: ≥ 10⁵ samples per function)
 // ---------------------------------------------------------------------
 
@@ -1717,6 +2311,335 @@ fn survey_of_observed_errors() {
             fun.name, b.units_of_u2
         );
     }
+}
+
+/// The largest errors observed in the subnormal regime: in `u²` for
+/// results of at least `2⁻⁹⁶⁸`, in `η` below (the two parts of the bound
+/// `c u²|f| + η`). `cargo test --release -- --ignored survey_of_the_subnormal`.
+#[test]
+#[ignore = "survey: run in release with --ignored"]
+fn survey_of_the_subnormal_regime() {
+    let n: usize = std::env::var("X02_SURVEY_N")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20_000);
+    let mut rng = Rng(0x5eed_0002);
+    let tiny = |r: &mut Rng| -> Dd {
+        let x = if r.next() & 1 == 0 {
+            d(f64::from_bits(1 + r.next() % ((1 << 52) - 1)))
+        } else {
+            r.dd_log(-1074, -900, false)
+        };
+        if r.next() & 1 == 1 { -x } else { x }
+    };
+    let near_one = |r: &mut Rng| -> Dd {
+        let t = tiny(r);
+        let x = Dd::ONE + t.hi();
+        if r.next() & 1 == 1 { -x } else { x }
+    };
+    println!("| function | family | samples | max (u², f ≥ 2⁻⁹⁶⁸) | max (η, f < 2⁻⁹⁶⁸) |");
+    println!("|---|---|---|---|---|");
+    let report = |name: &str, label: &str, errs: &[(Dy, Dy)], b: FunctionBound| {
+        let (mut rel, mut abs, mut m) = (0.0_f64, 0.0_f64, 0);
+        for (z, f) in errs {
+            m += 1;
+            let e = z.sub(f).abs();
+            if f.abs().lt(&Dy::pow2(-968)) {
+                abs = abs.max(e.scale(1074).approx());
+            } else if !f.is_zero() {
+                let r = e.sub(&Dy::f(b.absolute));
+                if !r.is_neg() {
+                    rel = rel.max(r.div(&f.abs(), 64, true).scale(106).approx());
+                }
+            }
+        }
+        println!("| `{name}` | {label} | {m} | {rel:.2} | {abs:.3} |");
+    };
+    for fun in all_functions() {
+        for (label, sample) in [
+            (
+                "tiny x (subnormal or below 2^-900)",
+                &tiny as &dyn Fn(&mut Rng) -> Dd,
+            ),
+            ("±(1 ± δ), δ tiny", &near_one),
+        ] {
+            let mut errs = Vec::new();
+            for _ in 0..n {
+                let mut x = sample(&mut rng);
+                if matches!(fun.name, "ln" | "log2" | "log10") {
+                    x = x.abs();
+                }
+                if !in_domain(fun.name, x) {
+                    continue;
+                }
+                let z = (fun.dd)(x);
+                assert!(z.is_finite(), "{}({x:?}) = {z:?}", fun.name);
+                let r = check_at(&fun, x, growth(&fun, x));
+                assert!(r.is_ok(), "{r:?}");
+                errs.push((Dy::dd(z.hi(), z.lo()), exact(&fun, x)));
+            }
+            if !errs.is_empty() {
+                report(fun.name, label, &errs, bound(fun.name));
+            }
+        }
+    }
+    for (fun, label, lo, hi) in [
+        (EXP, "[-745.2, -670]", -745.2, -670.0),
+        (EXP_M1, "[-745.2, -670]", -745.2, -670.0),
+        (EXP2, "[-1076, -967]", -1076.0, -967.0),
+    ] {
+        let mut errs = Vec::new();
+        for _ in 0..n {
+            let x = rng.dd(lo, hi);
+            let z = (fun.dd)(x);
+            assert!(
+                check_at(&fun, x, 0.0).is_ok(),
+                "{:?}",
+                check_at(&fun, x, 0.0)
+            );
+            errs.push((Dy::dd(z.hi(), z.lo()), exact(&fun, x)));
+        }
+        report(fun.name, label, &errs, bound(fun.name));
+    }
+}
+
+/// One sample of the directed search: the computed value, the exact one,
+/// and the bound `(c, g, G, A)`.
+type Sample = (Dd, Dy, f64, f64, f64, f64);
+
+/// A family of the directed search.
+type Gen = Box<dyn Fn(&mut Rng) -> Option<Sample> + Sync>;
+
+/// The directed search of the subnormal regime (X0.2, third round): `n`
+/// samples per family (`X02_SEARCH_N`, default 10⁶) on `X02_SEARCH_THREADS`
+/// threads (default 6); per family the number of violations of the bound,
+/// the largest error in `η` among results below `2⁻⁹⁶⁸` and in `u²` above.
+/// `cargo test --release -- --ignored search_of_subnormal_results`.
+#[test]
+#[ignore = "directed search: run in release with --ignored"]
+fn search_of_subnormal_results() {
+    let env = |k: &str, d: usize| {
+        std::env::var(k)
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(d)
+    };
+    let n = env("X02_SEARCH_N", 1_000_000);
+    let threads = env("X02_SEARCH_THREADS", 6);
+    let only = std::env::var("X02_SEARCH_ONLY").unwrap_or_default();
+    let one = |f: &Fun, x: Dd| -> Sample {
+        let b = bound(f.name);
+        (
+            (f.dd)(x),
+            exact(f, x),
+            b.units_of_u2,
+            b.growth_units_of_u2,
+            growth(f, x),
+            b.absolute,
+        )
+    };
+    // A double-double whose trailing component is (often) subnormal or lost:
+    // a full pair in [1, 2) scaled to 2^e.
+    let tiny = |r: &mut Rng, e0: i32, e1: i32| -> Dd {
+        let e = e0 + (r.next() % (e1 - e0) as u64) as i32;
+        let x = r.dd(1.0, 2.0).ldexp(e);
+        if r.next() & 1 == 1 { -x } else { x }
+    };
+    let mut fams: Vec<(&str, Gen)> = Vec::new();
+    fams.push((
+        "atan2, result in [η, 2^-968]",
+        Box::new(move |r: &mut Rng| {
+            let x = r.dd_log(-60, 1000, false);
+            // |y|/|x| ≈ 2^t, t ∈ [-1075, -968].
+            let t = -968 - (r.next() % 108) as i32;
+            let ey = exponent_of(x.hi()) + t;
+            let y = tiny(r, ey, ey + 1);
+            if y.hi() == 0.0 {
+                return None; // the special cases (signed zeros) are tested elsewhere
+            }
+            let (y, x) = if r.next().is_multiple_of(8) {
+                (y, -x)
+            } else {
+                (y, x)
+            };
+            let z = y.atan2(x);
+            if std::env::var("X02_SEARCH_VERBOSE").is_ok() {
+                let r = check_atan2(y, x);
+                if r.is_err() {
+                    eprintln!("ARGS {r:?}");
+                }
+            }
+            let p = support::prec(x.hi(), x.lo()).max(support::prec(y.hi(), y.lo())) + 32;
+            let f = support::dy(&support::fdd(y.hi(), y.lo(), p).atan2(&support::fdd(
+                x.hi(),
+                x.lo(),
+                p,
+            )));
+            Some((z, f, bound("atan2").units_of_u2, 0.0, 0.0, 0.0))
+        }),
+    ));
+    fams.push((
+        "exp [-745.2, -708.3]",
+        Box::new(move |r: &mut Rng| Some(one(&EXP, r.dd(-745.2, -708.3)))),
+    ));
+    fams.push((
+        "exp2 [-1076, -1022]",
+        Box::new(move |r: &mut Rng| Some(one(&EXP2, r.dd(-1076.0, -1022.0)))),
+    ));
+    fams.push((
+        "exp_m1 [-745.2, -708.3]",
+        Box::new(move |r: &mut Rng| Some(one(&EXP_M1, r.dd(-745.2, -708.3)))),
+    ));
+    fams.push((
+        "powi, result in 2^[-1076, -1022]",
+        Box::new(move |r: &mut Rng| {
+            let x = r.dd(0.5, 2.0);
+            let t = -1022.0 - 54.0 * r.unit();
+            let n = exponent_for(x, t);
+            if x.hi().log2() * f64::from(n) > -1021.0 || n.unsigned_abs() > 1 << 20 {
+                return None;
+            }
+            let z = x.powi(n);
+            let p = support::prec(x.hi(), x.lo()) + 64;
+            let f = support::dy(&(support::fdd(x.hi(), x.lo(), p).ln() * F::from(n)).exp());
+            let b = bound("powi");
+            Some((
+                z,
+                f,
+                b.units_of_u2,
+                b.growth_units_of_u2,
+                f64::from(n.unsigned_abs()),
+                0.0,
+            ))
+        }),
+    ));
+    fams.push((
+        "powf, result in 2^[-1076, -1022]",
+        Box::new(move |r: &mut Rng| {
+            let x = r.dd_log(-60, 60, false);
+            if x.hi() == 1.0 {
+                return None;
+            }
+            let t = -1022.0 - 54.0 * r.unit();
+            let y = Dd::from_f64(t) / x.ln() * Dd::LN_2;
+            let z = x.powf(y);
+            let p = support::prec(x.hi(), x.lo()).max(support::prec(y.hi(), y.lo())) + 64;
+            let lxy = support::fdd(x.hi(), x.lo(), p).ln() * support::fdd(y.hi(), y.lo(), p);
+            let g = support::dy(&lxy).approx().abs() * (1.0 + p2(-40));
+            let f = support::dy(&lxy.exp());
+            let b = bound("powf");
+            Some((z, f, b.units_of_u2, b.growth_units_of_u2, g, 0.0))
+        }),
+    ));
+    for f in [
+        SIN, TAN, ASIN, ATAN, SINH, TANH, ASINH, ATANH, LN_1P, EXP_M1,
+    ] {
+        fams.push((
+            f.name,
+            Box::new(move |r: &mut Rng| Some(one(&f, tiny(r, -1074, -968)))),
+        ));
+    }
+    for f in [LN, LOG2, LOG10, ACOSH] {
+        fams.push((
+            f.name,
+            Box::new(move |r: &mut Rng| {
+                let d = tiny(r, -1074, -968);
+                let x = Dd::ONE + d.hi();
+                if !in_domain(f.name, x) {
+                    return None;
+                }
+                Some(one(&f, x))
+            }),
+        ));
+    }
+    println!(
+        "| family | samples | violations | max η beyond c u²|f| (f < 2⁻⁹⁶⁸) | max raw η (f < 2⁻⁹⁶⁸) | max u² (f ≥ 2⁻⁹⁶⁸) | worst (η beyond) |"
+    );
+    println!("|---|---|---|---|---|---|---|");
+    for (label, g) in &fams {
+        if !only.is_empty() && !label.starts_with(only.as_str()) {
+            continue;
+        }
+        let results: Vec<(usize, usize, f64, f64, String, f64)> = std::thread::scope(|sc| {
+            let hs: Vec<_> = (0..threads)
+                .map(|t| {
+                    sc.spawn(move || {
+                        let mut rng = Rng(0x0003_0002 + 7919 * t as u64 + label.len() as u64);
+                        let (mut m, mut bad, mut eta, mut rel) = (0, 0, 0.0_f64, 0.0_f64);
+                        let mut raw = 0.0_f64;
+                        let mut worst = String::new();
+                        for _ in 0..n / threads {
+                            let Some((z, f, c, gg, gr, a)) = g(&mut rng) else {
+                                continue;
+                            };
+                            m += 1;
+                            if !z.is_finite()
+                                || !support::within((z.hi(), z.lo()), &f, c, gg, gr, a)
+                            {
+                                bad += 1;
+                                if worst.is_empty() {
+                                    worst = format!("{z:?} exact {:e}", f.approx());
+                                }
+                                if std::env::var("X02_SEARCH_VERBOSE").is_ok() && bad <= 3 {
+                                    eprintln!("VIOLATION {label}: {z:?}, exact {:e}", f.approx());
+                                }
+                            }
+                            if !z.is_finite() {
+                                continue;
+                            }
+                            let e = Dy::dd(z.hi(), z.lo()).sub(&f).abs();
+                            if f.abs().lt(&Dy::pow2(-968)) {
+                                raw = raw.max(e.scale(1074).approx());
+                                // The part beyond the relative term: what the
+                                // `+ η` of the bound has to cover.
+                                let rel_part = Dy::f(c)
+                                    .add(&Dy::f(gg).mul(&Dy::f(gr)))
+                                    .mul(&Dy::pow2(-106))
+                                    .mul(&f.abs())
+                                    .add(&Dy::f(a));
+                                let ex = e.sub(&rel_part);
+                                let v = if ex.is_neg() {
+                                    0.0
+                                } else {
+                                    ex.scale(1074).approx()
+                                };
+                                if v > eta {
+                                    eta = v;
+                                    if bad == 0 {
+                                        worst = format!("{z:?}, exact {:e}", f.approx());
+                                    }
+                                }
+                            } else if !f.is_zero() {
+                                let r = e.sub(&Dy::f(a));
+                                if !r.is_neg() && !r.is_zero() {
+                                    rel = rel.max(r.div(&f.abs(), 64, true).scale(106).approx());
+                                }
+                            }
+                        }
+                        (m, bad, eta, rel, worst, raw)
+                    })
+                })
+                .collect();
+            hs.into_iter().map(|h| h.join().expect("thread")).collect()
+        });
+        let m: usize = results.iter().map(|r| r.0).sum();
+        let bad: usize = results.iter().map(|r| r.1).sum();
+        let (mut eta, mut rel, mut worst) = (0.0_f64, 0.0_f64, String::new());
+        for r in &results {
+            if r.2 >= eta {
+                eta = r.2;
+                worst.clone_from(&r.4);
+            }
+            rel = rel.max(r.3);
+        }
+        let raw = results.iter().map(|r| r.5).fold(0.0, f64::max);
+        println!("| {label} | {m} | {bad} | {eta:.3} | {raw:.3} | {rel:.2} | {worst} |");
+    }
+}
+
+/// The unbiased exponent of a positive normal `f64`.
+fn exponent_of(h: f64) -> i32 {
+    ((h.to_bits() >> 52) & 0x7ff) as i32 - 1023
 }
 
 // ---------------------------------------------------------------------

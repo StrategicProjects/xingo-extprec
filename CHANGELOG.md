@@ -68,15 +68,19 @@ optionally, `xingo-sparse` 0.4.
   private modules.
 * The examples `dd_profile`, `dd_bench` and `ft_limit`, which reproduce
   the measurements behind the `LuOptions` profile for double-double of
-  `xingo-sparse` 0.4.0 and the timing tables of the kernels.
+  `xingo-sparse` 0.4.0 and the timing tables of the kernels, and
+  `elementary_bench`, the timing table of the elementary functions (no
+  feature needed).
 
 ### Known limitations
 
 See "Known limitations" in the README: the proofs of the bounds are written
 analyses, not machine-checked; the same bits across platforms were observed
-on aarch64 (NEON) and x86_64 (scalar and AVX2 + FMA), not elsewhere; the
-subnormal regime of the elementary functions was sampled only for `exp`
-and `exp2`; `verify` bounds residuals, not `‖x − x*‖`.
+on aarch64 (NEON), x86_64 (scalar and AVX2 + FMA) and i686, on Linux,
+macOS and Windows, not elsewhere; the
+subnormal regime of the elementary functions is tested for all 23 (subnormal
+arguments and trailing components, underflowing results), not exhausted;
+`verify` bounds residuals, not `‖x − x*‖`.
 
 <!-- TODO(owner): replace "Unreleased" in the 0.1.0 heading with the date of publication, and add the link line below. -->
 <!-- [0.1.0]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.0 -->

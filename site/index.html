@@ -134,6 +134,9 @@
   .card h3 { margin: 12px 0 6px; font-size: 1.1rem; letter-spacing: -.01em; }
   .card p { margin: 0; color: var(--muted); font-size: .96rem; }
   .card ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: .94rem; }
+  .card ul.cols { columns: 2; column-gap: 32px; margin-top: 12px; }
+  .card ul.cols li { break-inside: avoid; margin-bottom: 4px; }
+  @media (max-width: 860px) { .card ul.cols { columns: 1; } }
 
   .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
   .pill { font: 600 .82rem ui-monospace, monospace; padding: 6px 11px; border-radius: 999px; background: color-mix(in srgb, var(--brand) 12%, transparent); border: 1px solid color-mix(in srgb, var(--brand) 26%, transparent); color: var(--fg); }
@@ -406,8 +409,8 @@ assert!(<span class="c-cmd">norm_inf_bound</span>(&amp;rd) &lt;= <span class="c-
         <table class="cmp">
           <tbody>
             <tr><td>The bounds of the elementary functions and of the kernels are proven by first-order analyses written in the chapters of the sources and tested against exact oracles; they are not checked by a proof assistant. (Some bounds of the operations are, in the literature: Muller &amp; Rideau in Coq, Hubrecht &amp; Melquiond with Gappa.)</td></tr>
-            <tr><td>The same bits across platforms are a property of the design; they were observed on aarch64 (macOS, NEON), on x86_64 macOS under an emulator that announces no AVX2 (the scalar path) and on x86_64 Linux with AVX2 + FMA (the AVX2 path); other targets were not run. The mirror's CI runs on x86_64.</td></tr>
-            <tr><td>The bounds hold in the "safe range" (no overflow; every exact product at least 2⁻⁹⁶⁹ in magnitude, or zero). Below it results stay normalized, with an absolute error of order 2⁻¹⁰⁷⁴; <code>Interval</code> and <code>verify</code> account for underflow explicitly. The subnormal regime of the elementary functions was sampled only for <code>exp</code> and <code>exp2</code>.</td></tr>
+            <tr><td>The same bits across platforms are a property of the design; they are checked by the mirror's CI on x86_64 Linux and Windows, aarch64 Linux and macOS (NEON) and i686 Linux (32 bits), and were observed by hand on x86_64 Linux with AVX2 + FMA (the AVX2 path); big-endian targets and WebAssembly were not run.</td></tr>
+            <tr><td>The bounds hold in the "safe range" (no overflow; every exact product at least 2⁻⁹⁶⁹ in magnitude, or zero). Below it results stay normalized, with an absolute error of order 2⁻¹⁰⁷⁴; <code>Interval</code> and <code>verify</code> account for underflow explicitly. The elementary functions add η = 2⁻¹⁰⁷⁴ to their bounds for results below 2⁻⁹⁶⁸, and all 23 are tested there against the oracle: subnormal arguments, subnormal trailing components (1 ± δ with δ down to 2⁻¹⁰⁷⁴), underflowing results of <code>exp</code>, <code>exp2</code>, <code>exp_m1</code>, <code>powi</code>, <code>powf</code> and <code>atan2</code>. Tested, not exhausted.</td></tr>
             <tr><td><code>verify</code> encloses residuals, not the error <code>‖x − x*‖</code> (that needs a rigorous bound on <code>‖A⁻¹‖</code>). <code>polish</code> stops on a per-row test and often ends <code>Stagnated</code> on bases with degenerate rows (9 of the 93 Netlib), which is harmless.</td></tr>
             <tr><td>No <code>QuadDouble</code>, no elementary functions of intervals, no interval linear algebra (Krawczyk, <code>verifylss</code>), no correctly rounded elementary functions, no complex scalars, no <code>f32</code>.</td></tr>
             <tr><td>The costs were measured once, on one machine (Apple M2 Pro), under load from other processes.</td></tr>
@@ -421,10 +424,27 @@ assert!(<span class="c-cmd">norm_inf_bound</span>(&amp;rd) &lt;= <span class="c-
     <div class="wrap">
       <h2>Authorship, credits and disclaimer</h2>
       <p class="sub">Who wrote this, whose work it stands on, and what it does not claim.</p>
-      <div class="grid f3">
-        <div class="card"><div class="ic">✍️</div><h3>Authorship</h3><p><code>xingo-extprec</code> is written and maintained by <strong>André Leite</strong> as the extended-precision layer of the <a href="https://github.com/StrategicProjects/xingo">Xingó</a> solver, developed at <a href="https://github.com/StrategicProjects">StrategicProjects</a>. To cite it, use the repository's <code>CITATION.cff</code>.<!-- TODO(owner): add "the Zenodo DOI or", with the concept DOI link, once archived. --></p></div>
-        <div class="card"><div class="ic">🙏</div><h3>Credits</h3><p>The algorithms are those of their authors, implemented here from the published papers: Dekker and Knuth (error-free transformations), Joldes, Muller &amp; Popescu and Muller &amp; Rideau (double-word arithmetic and its bounds), Lefèvre, Louvet, Muller, Picot &amp; Rideau (square root), Hubrecht &amp; Melquiond (square), Ogita, Rump &amp; Oishi (compensated sums and dot products), Rump, Zimmermann, Boldo &amp; Melquiond (predecessor and successor), Tang (table-driven exponential), Payne &amp; Hanek (argument reduction), Kahan (<code>ln_1p</code>). The QD library of Hida, Li &amp; Bailey, <code>twofloat</code>, <code>inari</code> and INTLAB were studied as references; <a href="https://crates.io/crates/dashu">dashu</a> is the exact oracle of the tests and <a href="https://crates.io/crates/pulp">pulp</a> the optional SIMD dependency. Each chapter of the sources lists its references.</p></div>
+      <div class="grid f2">
+        <div class="card"><div class="ic">✍️</div><h3>Authorship</h3><p><code>xingo-extprec</code> is written and maintained by <strong>André Leite</strong> as the extended-precision layer of the <a href="https://github.com/StrategicProjects/xingo">Xingó</a> solver, developed at <a href="https://github.com/StrategicProjects">StrategicProjects</a>. It is developed inside the Xingó monorepo and mirrored, at every release, to <a href="https://github.com/StrategicProjects/xingo-extprec">its own repository</a>, where issues and pull requests are welcome. To cite it, use the repository's <code>CITATION.cff</code>.<!-- TODO(owner): add "the Zenodo DOI or", with the concept DOI link, once archived. --></p></div>
         <div class="card"><div class="ic">⚖️</div><h3>Disclaimer</h3><p>This is an independent project. It is not affiliated with, maintained by or endorsed by the authors of the QD library, <code>twofloat</code>, <code>inari</code>, INTLAB, <code>pulp</code> or <code>dashu</code>, and includes no code from them (<code>pulp</code> is linked only through the optional <code>simd</code> feature). All names and trademarks belong to their owners. The software is provided "as is", without warranty of any kind, under the terms of the MIT and Apache-2.0 licenses.</p></div>
+      </div>
+      <div class="grid" style="margin-top:18px">
+        <div class="card"><div class="ic">🙏</div><h3>Credits</h3><p>The algorithms are those of their authors, implemented here from the published papers. Each chapter of the sources lists its references.</p>
+          <ul class="cols">
+            <li><strong>Dekker</strong> and <strong>Knuth</strong> — error-free transformations</li>
+            <li><strong>Joldes, Muller &amp; Popescu</strong> and <strong>Muller &amp; Rideau</strong> — double-word arithmetic and its bounds</li>
+            <li><strong>Lefèvre, Louvet, Muller, Picot &amp; Rideau</strong> — double-word square root</li>
+            <li><strong>Hubrecht &amp; Melquiond</strong> — double-word square</li>
+            <li><strong>Ogita, Rump &amp; Oishi</strong> — compensated sums and dot products</li>
+            <li><strong>Rump, Zimmermann, Boldo &amp; Melquiond</strong> — predecessor and successor in rounding to nearest</li>
+            <li><strong>Tang</strong> — table-driven exponential</li>
+            <li><strong>Payne &amp; Hanek</strong> — argument reduction</li>
+            <li><strong>Kahan</strong> — the correction of <code>ln_1p</code></li>
+            <li><strong>Hida, Li &amp; Bailey</strong> (QD), <code>twofloat</code>, <code>inari</code> and INTLAB — studied as references</li>
+            <li><a href="https://crates.io/crates/dashu">dashu</a> — the exact oracle of the tests</li>
+            <li><a href="https://crates.io/crates/pulp">pulp</a> — the optional SIMD dependency</li>
+          </ul>
+        </div>
       </div>
     </div>
   </section>

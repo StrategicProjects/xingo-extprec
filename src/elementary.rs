@@ -57,7 +57,16 @@
 //!   `b`, A1 gives `w_a α + 2`.
 //! * **(C2) Products and quotients.** M2: `α + β + 4`; M1 (exact `f64`
 //!   factor): `α + 2`; M3: `2α + 3`; D2: `α + β + 15`; D1: `α + 3`;
-//!   R: `α/2 + 25/8`.
+//!   R: `α/2 + 25/8`. *Range.* These constants are theorems only where
+//!   the operation's own hypotheses hold (Chapter 11.2): every `two_prod`
+//!   it forms at least `2⁻⁹⁶⁹` in magnitude or exact (T2), no overflow,
+//!   and for R an operand `v ≥ 2⁻⁹⁶⁸` (LLMPR). Outside, a product or a
+//!   quotient leaves an absolute error up to `η` and R a relative one up
+//!   to `u`. Every proof below therefore says, for each operation whose
+//!   operands or result can be that small or that large, why it does not
+//!   matter (a term whose weight in the result is below `2⁻⁴⁰⁰`, or a
+//!   result itself below `2⁻⁹⁶⁸`, where `η` is allowed) or treats the case
+//!   by a separate step (Lemma W, the second form of `atanh`).
 //! * **(C3) Exact steps** add nothing: negation, `ldexp` (in the normal
 //!   range), [`DoubleDouble::from_sum`], [`DoubleDouble::from_product`]
 //!   in its range, Sterbenz subtractions `a − b` of `f64` with `b/2 ≤ a ≤
@@ -66,7 +75,9 @@
 //!   algorithm with `ε ≤ φ` against `f(â)`, then against `f(a)` the bound is
 //!   `φ + κ ε(â)`, where `κ` bounds the condition number `|a f′(a)/f(a)|`
 //!   between `a` and `â`; or, in absolute terms, `|f(â) − f(a)| ≤ |â − a|
-//!   max|f′|`.
+//!   max|f′|`. The `ε(â)` is the one of (C2), so (C4) inherits its range
+//!   hypotheses: an `â` computed outside them carries the absolute error
+//!   `η` (or, after R, the relative `u`) into `f`.
 //! * **(C5) A tiny addend (Lemma S).** If `b ∈ F` and `|b| ≤ 2⁻¹⁰ u |a_h|`,
 //!   A1 returns `a + b` with absolute error at most `u²|a_h|(1 + 2⁻⁹)`.
 //!   *Proof.* `|b| < ulp(a_h)/2`, so step 1 of A1 is `(s_h, s_ℓ) = (a_h,
@@ -92,7 +103,7 @@
 //! ## Algorithm E (`exp`, `exp2`: Tang's table-driven exponential)
 //! Input `x ∈ dd`, finite, `−745.2 ≤ x_h ≤ 709.79` (outside: `+0`, `+∞`,
 //! NaN by the table of special cases). `ℓ = ln 2/64`; `C₁, C₂, C₃` its three
-//! parts of 53 bits (`ℓ − C₁ − C₂ − C₃ < 2⁻¹⁶⁶`); `T_j` the table entry of
+//! parts of 53 bits (`|ℓ − C₁ − C₂ − C₃| < 2⁻¹⁶⁶`); `T_j` the table entry of
 //! `2^(j/64)`.
 //!
 //! E1. [Index.] `n ← round(x_h · RN(64/ln 2))`, an integer with `|n| ≤
@@ -137,7 +148,9 @@
 //! (iv) *Scaling.* `ldexp` is exact while both components stay normal.
 //! When the result is at least `2⁻⁹⁶⁸` its leading component is normal and
 //! only the trailing one can round, by at most `η/2 = 2⁻¹⁰⁷⁵ ≤ u²|z|/2`: `+
-//! 0.5`. Below `2⁻⁹⁶⁸` each component rounds by at most `η/2`. Overflow of
+//! 0.5`. Below `2⁻⁹⁶⁸` the scaling is done in two multiplications when `k <
+//! −1000`, and the trailing component may round twice; the two components
+//! together err by at most `η`. Overflow of
 //! `ldexp` returns `+∞` (step E of Chapter 11.2), which happens only when
 //! `T_j(1 + p) 2ᵏ`, within `4.6u²` of `eˣ`, exceeds `MAX_dd`. ∎
 //!
@@ -212,7 +225,8 @@
 //!
 //! **Lemma L6.** `ε(e ln 2) ≤ 1 + 2⁻⁴⁰`. *Proof.* `a + p + q = e(A + B)`
 //! exactly; `|p| ≤ 2⁻⁴²|a|`, so Fast2Sum applies and is exact; `|t| ≤
-//! u|s|`, `|q| ≤ u|p|`, `|e C| ≤ 2¹¹ ulp(B)/2 < 2⁻⁹⁴|s|`. Two roundings remain:
+//! u|s|`, `|q| ≤ u|p|`, `|e C| ≤ |e| 2⁻⁹⁸ < 2⁻⁹⁷|s|`
+//! (as `|s| ≥ 0.69|e|`). Two roundings remain:
 //! `q + eC`, at most `u · 2⁻⁹³|s|`, and `t + (…)`, at most `u|v| ≤ u²|s|(1 +
 //! 2⁻⁴¹)`; the parts of `ln 2` beyond `C` weigh `2¹¹ · 2⁻¹⁴⁸`. ∎
 //!
@@ -224,11 +238,12 @@
 //! 0`), so `ρ = 0.0225` covers both signs (`0.0161` when `j = 0`); `σ₀ = 0`
 //! (`1/2` is exact), `σ = 1`, `ε_s = ε(z)`. For `j = 0`, `ε(z) = 0`: `E =
 //! 4.15`, `ε(Q) ≤ 3.14`, `ε(z²Q) ≤ 3 + 3.14 + 4 = 10.14`; the weights in `z
-//! − z²Q` are at most `1 + ζ/2` and `ζ/2(1 − ζ/2)⁻¹ ≤ 0.008`: `ε(L) ≤ 3.09`.
+//! − z²Q` are at most `(1 − ζ/2)⁻¹` and `ζ/2(1 − ζ/2)⁻¹ ≤ 0.008`: `ε(L) ≤ 3.09`.
 //! For `j ≠ 0`, `ε(z) = 3` (D1): `E = 4.28`, `ε(Q) ≤ 3.26`, `ε(z²) ≤ 9`,
 //! `ε(z²Q) ≤ 16.3`, weights `1.011` and `0.011`: `ε(L) ≤ 1.011 · 3 + 0.011 ·
 //! 16.3 + 3 = 6.22`. The remainder after `m = 20` is below `ζ²⁰/21 · |z| <
-//! 2⁻¹¹⁴|L|`. (ii) *`ln y`.* `LNC_j` and `L` have the same sign (but for
+//! 2⁻¹¹⁴|L|` (at most `0.004`, inside the `6.22`: the sum before rounding up
+//! is `6.212`). (ii) *`ln y`.* `LNC_j` and `L` have the same sign (but for
 //! `|d| ≤ u`, where the weights exceed 1 by `2⁻⁴⁵`); the weight of `L` is
 //! largest for `j = ±1`, `0.496` and `0.504`: `ε(ln y) ≤ 3 + 0.496 + 0.504 ·
 //! 6.22 = 6.63`. (iii) *Cancelling cases.* `|ln x| = |ln(2y)|` or `|ln(y/2)|
@@ -262,7 +277,11 @@
 //! (tested first); in the cancelling cases of L5 it is `ln x · LOG2_E`
 //! (`4.46 + 5`); otherwise `ln y · LOG2_E` (`ε ≤ 11.63`) plus the exact `e`
 //! by A1, with weight at most `0.5/1.5` on `log₂ y` when `e ≠ 0`: `ε ≤ 2 +
-//! 0.333 · 11.63 = 5.88`. So `ε(log2), ε(log10) ≤ 11.7`.
+//! 0.333 · 11.63 = 5.88`. So `ε(log2), ε(log10) ≤ 11.7`. *Below `2⁻⁹⁶⁸`*
+//! (only `x = (1, δ)`, `ln x = δ` to `δ/2` relative): in the final M2 the
+//! leading product and its error term, both on the grid of `η`, lose at
+//! most `η/2` together, and the cross term `δ · LOG_ℓ` rounds by at most
+//! `η/2`: the `η` of the bound.
 //!
 //! ## Algorithm P (`powi`: binary powering with a separate exponent)
 //! Input `x ∈ dd` finite and nonzero, `n ∉ {−1, 0, 1}` (those and the
@@ -326,7 +345,8 @@
 //!     modulo 4, as two integer bits and a 318-bit fraction `F`.
 //! R3. [Quadrant.] If `F < 2³¹⁷`: `q ←` the integer bits, `G ← 2F`, sign
 //!     `+`. Else `q ←` the integer bits `+ 1 (mod 4)`, `G ← 2(2³¹⁸ − F)`,
-//!     sign `−`. Then `g = G · 2⁻³¹⁸ ∈ [0, 1]` and `r = ±g · π/4`.
+//!     sign `−`. Then `ĝ = G · 2⁻³¹⁸ ∈ [0, 1]` and `r = ±ĝ · π/4` (`ĝ`
+//!     approximates the exact `g = |r*|/(π/4)` of Theorem R).
 //! R4. [Multiply.] `R ← ⌊G · P / 2²⁵⁶⌋` with `P = ⌊2³²⁰ π/4⌋` (five words),
 //!     so `|r| ≈ R · 2⁻³⁸²`, `R < 2³⁸³`.
 //! R5. [Convert.] With `L` the position of the leading bit of `R`, take the
@@ -344,13 +364,15 @@
 //! modulo 4 (`2³²⁰ · 2⁻³¹⁸ = 4`); negation keeps `|θ| < 2⁻³¹⁸`. The skipped
 //! components weigh less than `2⁻³²⁸`. So `A 2⁻³¹⁸ ≡ x · 2/π − δ (mod 4)`
 //! with `|δ| < 2⁻³¹⁶·⁹`. *R3:*
-//! the chosen integer is within `1/2 + δ` of `x · 2/π`; `g` errs by at most
-//! `2δ`. *R4:* `P` errs by less than `2⁻³²⁰`, and the floor drops less than
+//! the chosen integer is within `1/2 + δ` of `x · 2/π`; `|ĝ − g| ≤ 2δ`.
+//! *R4:* `P` errs by less than `2⁻³²⁰`, and the floor drops less than
 //! `2⁻³⁸²`: `|R 2⁻³⁸² − g π/4| < (π/4) 2δ + 2⁻³²⁰ + 2⁻³⁸² < 2⁻³¹⁶`. *R5:*
-//! `v₀ + v₁ + v₂` is `R 2⁻³⁸²` truncated after 159 bits (`< 2⁻¹⁵⁷` of it);
+//! `v₀ + v₁ + v₂` is `R 2⁻³⁸²` truncated after 159 bits (`< 2⁻¹⁵⁸` of it);
 //! Fast2Sum is exact (`|v₁| < ulp(v₀)`); `|t| ≤ u|s|`, `|v₂| < 2⁻¹⁰⁵ ·
 //! R 2⁻³⁸²`, so the one rounding, of `t + v₂`, is at most `u²(1 + 2⁻⁵¹)` of
-//! the value; `from_sum` is exact. ∎
+//! the value; `from_sum` is exact. ∎ When `R ≥ 1`, `|r| ≥ 2⁻³⁸²` (the
+//! chunks are exact multiples of `2⁻³⁸²`); `R = 0`, possible only if `|r*|
+//! < 2⁻³¹⁵`, gives `r = 0`.
 //!
 //! The contract planned Cody–Waite (`π/2` in five parts) below `2⁵²` and
 //! Payne–Hanek above. Cody–Waite in double-double arithmetic subtracts with
@@ -359,8 +381,9 @@
 //! 2⁻⁵³` — `2⁻¹⁰⁵` at `k ≈ 2⁵²`, and `2⁻¹⁵⁷` even at `k = 1`. That cannot be
 //! proven below the floor `2⁻²⁰⁰` of the declared bound (the pilot's good
 //! measurements near `kπ/2` presumably reflect A2 being exact there in
-//! practice; that is not a theorem). The integer reduction is exact by construction, costs about
-//! 40 ns, and is used for every `|x| > π/4`.
+//! practice; that is not a theorem). The integer reduction has the proven
+//! absolute error `2⁻³¹⁶` of Theorem R, whatever `x`, and is used for every
+//! `x_h > RN(π/4)` (its own cost was not measured separately).
 //!
 //! ## Algorithm K (`sin`, `cos`, `sin_cos`, `tan`)
 //! S1. [Reduce.] `a ← |x|`. If `a_h ≤ RN(π/4)`, `q ← 0`, `r ← a`; else
@@ -373,6 +396,13 @@
 //!     sign of `x`; `cos x = (cos r, −sin r, −cos r, sin r)[q]`; `tan x =
 //!     sin r/cos r` (`q` even) or `−cos r/sin r` (`q` odd), with the sign of
 //!     `x` (D2).
+//! S4. [Tangent at `r = 0`.] For `tan` only: if `q` is odd and Algorithm R
+//!     returned `r = 0`, take `r ← 2⁻³⁸²`, the smallest nonzero magnitude
+//!     that R5 produces (`sin`, `cos` and `sin_cos` keep `r = 0`). No
+//!     argument is known to reach this step: the smallest `|r*|` found by a
+//!     directed search is about `2⁻¹¹⁸`, and the step is tested through an
+//!     internal hook. It exists because the proof cannot exclude `|r*| <
+//!     2⁻³¹⁵`, where `−cos r/sin r` would otherwise be `±∞`.
 //!
 //! Each function calls the same kernels on the same `(q, r)`, so `sin_cos`
 //! gives the bits of `sin` and of `cos`; the kernels are odd and even bit
@@ -388,16 +418,32 @@
 //! 3)/0.968 = 4.40`; `ε(r³) = 7`, `ε(r³Q_s) ≤ 15.4`; the weight of `r³Q_s`
 //! is `(r − sin r)/sin r ≤ 0.111`: `ε ≤ 0.111 · 15.4 + 3 = 4.71`. The first
 //! omitted term is below `2⁻¹²²` of `sin r`. *Cosine kernel:* for `h = r/2`,
-//! `ρ = 0.0078`, `ε(Q) ≤ 4.10`, weight `0.026`: `ε(sin h) ≤ 3.39`;
-//! `ε(sin²h) ≤ 9.78`; in `1 − 2 sin²h` (A1, exact 1) the weight of `2
-//! sin²h` is `(1 − cos r)/cos r ≤ 0.415`: `ε ≤ 2 + 0.415 · 9.78 = 6.06`.
+//! `ρ = 0.0078`, `ε(Q) ≤ 4.10`, weight `0.026`: `ε(sin h) ≤ 3.40` (with
+//! the truncation of its 11 terms, `10⁻³`); `ε(sin²h) ≤ 9.80`; in `1 − 2
+//! sin²h` (A1, exact 1) the weight of `2 sin²h` is `(1 − cos r)/cos r ≤
+//! 0.415`: `ε ≤ 2 + 0.415 · 9.80 = 6.06`. *Range (C2):* for `2⁻⁴⁰⁰ ≤ |r|
+//! < 2⁻³²³` the product `r · r²` falls below `2⁻⁹⁶⁹` and M2 errs by up to
+//! `η` absolute, below `2⁻⁶⁷⁰` of `sin r`; in `cos r` the square `sin²h`
+//! underflows likewise against the exact 1 (and below `2⁻⁴⁰⁰`, `cos r ← 1`
+//! leaves `r²/2 < 2⁻⁸⁰⁰`).
 //! *Reduction (C4):* by Theorem R the kernels see `r` instead of `r*`;
 //! `|sin r − sin r*| ≤ |r − r*|`, which is `≤ 1.111u²|sin r*| + 2⁻³¹⁶`, and
 //! `|cos r − cos r*| ≤ sin|r*| |r − r*| ≤ 0.79u²|cos r*| + 2⁻³¹⁶`. Totals
-//! `4.71 + 1.12` and `6.06 + 0.8`: `6.9`. For `|x| ≤ π/4`, `r = x` exactly.
-//! *Tangent:* D2 adds `15` to `4.71 + 6.06`; `|tan r − tan r*| ≤ (1 +
-//! tan²)|r − r*|`, whose relative part is `r/(sin r cos r) u²(1 + 2⁻⁴⁹) ≤
-//! 1.58u²` (the same for `cot`): `27.4`. ∎
+//! `4.71 + 1.12` and `6.06 + 0.8`: `6.9`. For `x_h ≤ RN(π/4)`, `r = x`
+//! exactly (such an `x` may exceed `π/4` by `2.6·10⁻¹⁷`, which changes the
+//! constants above by less than `10⁻¹⁵`). *Tangent:* D2 adds `15` to
+//! `4.71 + 6.06`. For an even `q`, or an odd `q` with `|r*| ≥ 2⁻³⁰⁰`:
+//! then `|r − r*| ≤ 2⁻¹⁶|r*|`, so every `ξ` between `r` and `r*` has `1 +
+//! cot²ξ ≤ (1 + 2⁻¹²)(1 + cot²r*)` (likewise for `tan`), and `|tan r −
+//! tan r*| ≤ (1 + tan²ξ)|r − r*|` has the relative part `r/(sin r cos r)
+//! u²(1 + 2⁻¹²) ≤ 1.58u²` (the same for `cot`) and the absolute part
+//! `2⁻³¹⁵(1 + tan²x)`: `27.4`. For an odd `q` with `|r*| < 2⁻³⁰⁰` (not
+//! known to occur), `tan x = −cot r*` has `1 + tan²x > 2⁶⁰⁰`, and the
+//! computed `z = −cos r/sin r` has `|z| ≤ 2³⁸²(1 + 2⁻⁵⁰)` because `|r| ≥
+//! 2⁻³⁸²` (R5, or step S4): `|z − tan x| ≤ |z| + |cot r*| ≤ 2⁻²⁰⁰(1 +
+//! tan²x)`, the absolute term of the *declared* bound, which therefore
+//! holds for every finite `x`; the proven `27.4u²|tan x| + 2⁻³¹⁵(1 +
+//! tan²x)` is shown only outside this case. ∎
 //!
 //! ## Algorithm T (`atan`)
 //! Input `a ∈ dd`, `0 ≤ a < ∞` (`atan` is odd: the sign is applied last;
@@ -415,7 +461,8 @@
 //! T3. [Large.] Else `atan a ← π/2 − atan(1/a)` (D2, then T1 or T2).
 //!
 //! **Theorem T.** `ε(atan) ≤ 5.8`. *Proof.* *T1:* Lemma H with `s = a²`
-//! (`ε_s = 3`), `ρ = 2⁻¹² · 0.61`: `ε(Q_a) ≤ 4.002`, so `ε(a³Q_a) ≤ 15.01`;
+//! (`ε_s = 3`), `ρ = 0.895 · 2⁻¹²` (`a ≤ 2⁻⁶`, so that T2's `|t| ≤ 1/64`
+//! is covered): `ε(Q_a) ≤ 4.003`, so `ε(a³Q_a) ≤ 15.01`;
 //! its weight is at most `a²/3 < 10⁻⁴`: `ε ≤ 3.002`; the omitted terms are
 //! below `2⁻¹²⁰` of the value. *T2:* `ε(a·c + 1) ≤ 2 + 2`, so `ε(t) ≤ 4 +
 //! 15 = 19` and `ε(atan t) ≤ 3.002 + 19` (C4, the condition number of
@@ -424,48 +471,108 @@
 //! weights `1.04` and `0.04`, `ε ≤ 3 + 1.04 + 0.04 · 22.0 = 4.92`. *T3:*
 //! `ε(1/a) ≤ 15`, `ε(atan(1/a)) ≤ 4.92 + 15`; with `atan(1/a) ≤ atan(1/8)`
 //! the weights of `π/2` and of `atan(1/a)` are `1.086` and `0.086`, so
-//! `ε ≤ 3 + 1.086 + 0.086 · 19.92 = 5.80`. ∎
+//! `ε ≤ 3 + 1.086 + 0.086 · 19.92 = 5.80`. *Range (C2):* in T1 the
+//! products `a²`, `a · a²` are formed only for `a ≥ 2⁻⁴⁰⁰`, where `a³ ≥
+//! 2⁻¹²⁰⁰` may underflow: its absolute error `η` is below `2⁻⁸⁰⁰` of `a`.
+//! In T2 the numerator can be minuscule (`a` next to a cell's centre `c`);
+//! then `t` and the series are tiny and their weight `|atan t|/atan a`
+//! makes any `η` negligible. In T3, `1/a` is subnormal for `a > 2¹⁰²²`,
+//! inexact by `η`, with weight below `2⁻¹⁰²²` against `π/2`. ∎
 //!
 //! **`atan2(y, x)`.** After the special cases (the table of `f64`), both
-//! magnitudes are scaled by the same power of two so that the larger is in
-//! `[1, 2)` (exact; the smaller rounds only if the quotient is below
-//! `2⁻¹⁰²¹`). If `|y| ≤ |x|`: `z ← atan(|y|/|x|)`, and the result is `z`
-//! (`x > 0`) or `π − z`; else `z ← atan(|x|/|y|)` and the result is `π/2 −
-//! z` (`x > 0`) or `π/2 + z`; then the sign of `y`. A quotient below
-//! `2⁻⁴⁰⁰` is formed scaled by `2⁶⁰⁰` and is its own arctangent. *Bound:*
+//! magnitudes are scaled by the same power of two `2⁻ˢ` so that the larger
+//! is in `[1, 2)` (exact for the larger; the smaller can round, its
+//! trailing component by at most `η/2`, which is at most `0.5u²` of a
+//! quotient of at least `2⁻⁹⁶⁸` — with a widely spaced trailing component
+//! that happens for quotients up to about `2⁻⁹¹⁵`). If `|y| ≤ |x|`: `z ←
+//! atan(|y|/|x|)`, and the result is `z` (`x > 0`) or `π − z`; else `z ←
+//! atan(|x|/|y|)` and the result is `π/2 − z` (`x > 0`) or `π/2 + z`; then
+//! the sign of `y`. The quotient `q = n/d` (`n` the smaller scaled
+//! magnitude, `d ∈ [1, 2)` the larger) is formed in one of three ways:
+//!
+//! Q1. [Tiny.] If `n_h < 2⁻⁹⁶⁸`: with the *unscaled* smaller magnitude `m =
+//!     2ᵉ μ`, `μ ∈ [1, 2)` (exact, a subnormal `m` scaled up first), `q ←
+//!     (μ/d) · 2^(e−s)` (D2 on operands in `[1, 2)`, then one `ldexp`).
+//! Q2. [Small.] Else, if `n_h < 2⁻⁴⁰⁰`: `q ← ((n · 2⁶⁰⁰)/d) · 2⁻⁶⁰⁰`, so that
+//!     D2 stays in its range.
+//! Q3. Else `q ← n/d` (D2).
+//!
+//! In Q1 and Q2, `q < 2⁻⁴⁰⁰` is its own arctangent. *Q1:* `q < 2⁻⁹⁶⁸` (`n <
+//! 2⁻⁹⁶⁸`, `d ≥ 1`); the scaling of `m` is exact, D2 errs by `15u²|q|`, and
+//! the final `ldexp` rounds each component at most once by at most `η/2`
+//! (its first factor `2⁻¹⁰⁰⁰`, when `e − s < −1000`, leaves the leading
+//! component of `μ/d ∈ [1/2, 2)` normal; a trailing component that it
+//! rounds ends below `η/2` anyway and is lost with at most that): `|q̂ − q|
+//! ≤ 15u²|q| + η`, the bound with its `η`. Scaling `n` itself and then
+//! unscaling the quotient would round twice — the scaled `n`, subnormal,
+//! and the result — up to about `2η` (found by the property tests on
+//! x86_64: `1.04η` at `y = (1.5127926632651903·10⁻²⁹⁵, −7.815437673005·
+//! 10⁻³¹²)`, `x = 23 118 976 389 754.613`). *Q2:* `ε ≤ 15 + 0.5 + 0.5 = 16`
+//! (D2, the rounding of `n`'s trailing component, the `ldexp(−600)`),
+//! below the `19.92` of `z`; `q ≥ 2⁻⁹⁶⁹` there, and below `2⁻⁹⁶⁸` the two
+//! roundings are of trailing components only, `η` in all. *Bound:*
 //! `ε(q) ≤ 15`, `ε(z) ≤ 4.92 + 15κ` with `κ ≤ 1` the condition number of
 //! `atan` on `[0, 1]`. `z`: `19.92`. `π − z`, `z ≤ π/4`: weights `4/3`,
 //! `1/3`: `3 + 1.33 + 6.64 = 11.0`. `π/2 − z`: weight `≤ 2` on `π/2`, `≤ 1`
 //! on `z`, and `w_z κ = q/((1 + q²)(π/2 − atan q)) ≤ 2/π`: `3 + 2 + 4.92 +
 //! 15 · 0.637 = 19.5`. `π/2 + z`: `≤ 10.7`. So `ε(atan2) ≤ 20`.
 //!
+//! **Lemma W (a square root below `2⁻⁹⁶⁸`).** Algorithm R of Chapter 11.2
+//! has its bound `25/8 u²` only for operands `v ≥ 2⁻⁹⁶⁸` (LLMPR, Theorem
+//! 3.6): below, the residual `v_h − s_h²` of its Newton step is a
+//! subnormal `fma` result that loses its low bits, and the relative error
+//! of `√v` reaches `u`. Step W: for `0 < v_h < 2⁻⁹⁶⁸`, `√v ← √(v · 2⁶⁰⁰) ·
+//! 2⁻³⁰⁰`; otherwise R itself (so W changes nothing from `2⁻⁹⁶⁸` up). Then
+//! `ε(√v) ≤ α/2 + 25/8 + 2⁻⁴³⁰` for `ε(v) ≤ α`. *Proof.* The scaling up is
+//! exact and puts `v · 2⁶⁰⁰` in `[2⁻⁴⁷⁴, 2⁻³⁶⁸)`, inside the safe range of
+//! Chapter 11.2; R's result has its leading component in `[2⁻²³⁷, 2⁻¹⁸⁴)`,
+//! which stays normal after the scaling down, while the trailing one moves
+//! by at most `η/2 < 2⁻⁵³⁷ √v` (`√v ≥ √η = 2⁻⁵³⁷`) if it becomes subnormal;
+//! `fast_two_sum` renormalizes exactly (Chapter 11.2, `ldexp`). ∎
+//!
 //! **`asin`, `acos`.** With `a = |x| ≤ 1` and `w = √((1 − a)(1 + a))`:
 //! for `a ≥ 1/2`, `1 − a` is exact (Sterbenz, `from_sum`), `1 + a` is A1
 //! and the product M2: `ε(w) ≤ (2 + 4)/2 + 25/8 = 6.13`; for `a < 1/2`, `w
 //! = √(1 − a²)` (M3, A1 with the weight `1/3` on `a²`): `ε(w) ≤ 3/2 + 25/8 =
-//! 4.63`. Then `asin x = ±atan(a/w)` (`a ≤ w`) or `±(π/2 − atan(w/a))`, and
+//! 4.63`. The square root is step W. Its operand is below `2⁻⁹⁶⁸` only if
+//! `a_h = 1` and `a_ℓ = −δ` with `0 < δ < 2⁻⁹⁶⁹` (for `a_h < 1`, `1 − a ≥
+//! 2⁻⁵⁴`). Then `1 − a = δ` and `1 + a = (2, −δ)` are exact, `δ · 2` is an
+//! exact `two_prod`, and the only rounding in M2 is that of the cross term
+//! `−δ²`: at most `δ²` when it underflows (`δ/2 < 2⁻⁹⁷⁰` of the product
+//! `2δ`), else at most `η/2` with `δ > 2⁻⁵³⁸` (below `2⁻⁵³⁶` of it). So
+//! `ε(w) ≤ 25/8 + 2⁻⁴²⁹` there, and `acos(1 − δ) = atan(w/a)`, essentially
+//! `w`, keeps the bound; Algorithm R alone would give it a relative error
+//! up to `u` (found by the tests of the subnormal regime). Then `asin x =
+//! ±atan(a/w)` (`a ≤ w`) or `±(π/2 − atan(w/a))`, and
 //! `acos x` is `atan(w/a)` (`w ≤ a`) or `π/2 − atan(a/w)` for `x ≥ 0`, and `π
 //! − atan(w/a)` or `π/2 + atan(a/w)` for `x < 0`. *Bound:* the quotient has
 //! `ε ≤ 15 + ε(w) ≤ 21.13`; `atan(q)` then `4.92 + 21.13 = 26.05`; `π/2 −
 //! atan q` gives `3 + 2 + 4.92 + 0.637 · 21.13 = 23.4`; the others are
 //! smaller (`13.0`, `12.7`). So `ε(asin), ε(acos) ≤ 26.1`. `asin(±1) =
-//! ±π/2`, `acos(1) = +0` and `acos(−1) = π` exactly (`w = 0`).
+//! ±π/2`, `acos(1) = +0` and `acos(−1) = π` exactly (`w = 0`). *Range
+//! (C2):* below `2⁻⁴⁰⁰` `asin` returns `x`, and `acos` is `π/2 −
+//! atan(a/w)` with `a/w ≈ a` of weight below `2⁻³⁹⁹` (its D2 may err by
+//! `η` for a subnormal `a`); above it `a²` and `a/w` are at least `2⁻⁸⁰⁰`.
+//! Near `±1`, `w ≥ 2⁻⁵³⁷` (step W), so `w/a` and its D2 products stay
+//! above `2⁻⁹⁶⁹`, and `atan(w/a)` is `w/a` itself below `2⁻⁴⁰⁰`.
 //!
 //! ## The hyperbolic functions and their inverses (composition)
 //! With `a = |x|` (the odd functions apply the sign of `x` last; `cosh` is
 //! even), each below is a short composition whose bound follows from (C1)–
 //! (C4) and Theorems E, M, L, L′:
 //!
-//! * `sinh a = (E + E/(E + 1))/2`, `E = exp_m1(a)`, for `a ≤ 709`;
+//! * `sinh a = (E + E/(E + 1))/2`, `E = exp_m1(a)`, for `a_h ≤ 709`;
 //!   `exp(a − 1) · e/2` above (`a − 1` is exact there, `e/2` is `E/2` of the
 //!   table, exact scaling). *Bound:* `ε(E + 1) ≤ 2 + 7.15 E/(E + 1)`,
 //!   `ε(E/(E + 1)) ≤ 24.15 + 7.15 E/(E + 1)`, and the last A2 weighs them
 //!   `(E + 1)/(E + 2)` and `1/(E + 2)`: largest as `E → 0`, `3 + (7.15 +
 //!   24.15)/2 = 18.7`. Above 709: `4.6 + 1 + 4 = 9.6` (the neglected `e⁻ᵃ` is
-//!   `2⁻²⁰⁴⁵` relative).
-//! * `cosh a = (E + 1/E)/2`, `E = exp(a)`, for `a ≤ 709`; `exp(a − 1) · e/2`
+//!   `2⁻²⁰⁴⁵` relative). Below `2⁻⁴⁰⁰` the result is `a`.
+//! * `cosh a = (E + 1/E)/2`, `E = exp(a)`, for `a_h ≤ 709`; `exp(a − 1) · e/2`
 //!   above. *Bound:* `ε(1/E) ≤ 4.6 + 15`; the weights `E²/(E² + 1)` and
-//!   `1/(E² + 1)`, largest at `E = 1`: `3 + (4.6 + 19.6)/2 = 15.1`.
+//!   `1/(E² + 1)`, largest at `E = 1`: `3 + (4.6 + 19.6)/2 = 15.1`. *Range:*
+//!   near `a = 709`, `1/E` is near `2⁻¹⁰²³` and its D2 can err by `η`, with
+//!   the weight `1/(E² + 1) < 2⁻²⁰⁴⁴`.
 //! * `tanh a = E₂/(E₂ + 2)`, `E₂ = exp_m1(2a)`, for `a < 5/16`; else `(1 −
 //!   F)/(1 + F)`, `F = exp(−2a)`. *Bound:* below `5/16`, `E₂ ≤ 0.868`,
 //!   `ε(E₂ + 2) ≤ 2 + 0.303 · 7.15`, `ε ≤ 7.15 + 4.17 + 15 = 26.4`; above,
@@ -480,15 +587,30 @@
 //!   weight is at most `0.382`: `ε(v) ≤ 12.1`; the condition number of
 //!   `ln_1p` is at most 1: `ε ≤ 7.64 + 12.1 = 19.7`. For `2 ≤ a < 2⁶⁰`, `ε(v)
 //!   ≤ 3 + 0.528 · 5.63` and the condition number of `ln` at `v ≥ 4.23` is
-//!   `1/ln v ≤ 0.693`: `ε ≤ 6.63 + 4.14 = 10.8`. Above: `3 + 6.63 = 9.6`.
+//!   `1/ln v ≤ 0.693`: `ε ≤ 6.63 + 4.14 = 10.8`. Above: `3 + 6.63 = 9.63`.
+//!   *Range (C2):* below `2⁻⁴⁰⁰` the result is `a`; above, `a² ≥ 2⁻⁸⁰⁰` and
+//!   the products of the quotient `a²/(1 + √(1 + a²))` are of that size,
+//!   above `2⁻⁹⁶⁹` (outside the conservative safe range of Chapter 11.2,
+//!   but every `two_prod` is exact), and the quotient weighs `a/2` in `v`.
 //! * `acosh x = ln_1p(d + √(d(d + 2)))`, `d = x − 1` (exact), for `x < 2`;
 //!   `ln(x + √(x² − 1))` for `2 ≤ x < 2⁶⁰`; `ln x + ln 2` above. *Bound:*
 //!   `ε(√(d(d + 2))) ≤ 3 + 25/8`, `ε(v) ≤ 3 + 6.13`, `ε ≤ 7.64 + 9.13 =
-//!   16.8`; `ε(x² − 1) ≤ 2 + (4/3) · 3`, `ε(v) ≤ 3 + 6.13/2`, `ε ≤ 6.63 + 0.76 ·
-//!   6.07 = 11.3`; above, `9.6`.
+//!   16.8` (the square root is step W: `d(d + 2) < 2⁻⁹⁶⁸` only when `x_h =
+//!   1` and `d = x_ℓ < 2⁻⁹⁶⁹`, where M2 errs by less than `2⁻⁵³⁶` relative,
+//!   as in `acos`, and `acosh x ≈ √(2d)` is the square root itself);
+//!   `ε(x² − 1) ≤ 2 + (4/3) · 3`, `ε(v) ≤ 3 + 6.13/2`, `ε ≤ 6.63 + 0.76 ·
+//!   6.07 = 11.3`; above, `3 + 6.63 = 9.63`.
 //! * `atanh a = ln_1p(2a/(1 − a))/2`, with `1 − a` exact for `a ≥ 1/2` and A1
 //!   below. *Bound:* `ε(2a/(1 − a)) ≤ 2 + 15`, condition number of `ln_1p` at
-//!   most 1: `ε ≤ 7.64 + 17 = 24.7`.
+//!   most 1: `ε ≤ 7.64 + 17 = 24.7`. If `1 − a` is subnormal (then `a = (1,
+//!   −δ)`, `δ < 2⁻¹⁰²²`, and `2a/(1 − a) ≈ 2/δ` exceeds `Ω` once `δ <
+//!   2⁻¹⁰²³`), `atanh a = (ln(1 + a) − ln(1 − a))/2` instead, with `1 + a =
+//!   (2, −δ)` exact (A1) and `1 − a = δ`: Theorem L twice, and A2 on two
+//!   positive terms (`ln(2 − δ) > 0`, `−ln δ > 0`): `ε ≤ 6.63 + 3 = 9.7`.
+//!   For a normal `1 − a` below `2⁻⁴⁷⁹` the quotient exceeds `2⁴⁸⁰`, outside
+//!   the conservative safe range of Chapter 11.2, but the products of D2
+//!   are near `2a` and its divisor is normal, so its hypotheses (T2, no
+//!   overflow) hold and so does `15u²`. Below `2⁻⁴⁰⁰` the result is `a`.
 //!
 //! Below `2⁻⁴⁰⁰` the odd functions return `x` (the cubic term is `2⁻⁸⁰⁰`
 //! relative).
@@ -521,8 +643,33 @@
 //! max(1, |y ln x|)`. At the double-doubles nearest to `kπ/2`, `k ≤ 2·10⁶`:
 //! `0.50` relative, `4·10⁻⁵⁹` absolute at most.
 //!
+//! In the subnormal regime (the `#[ignore]`d test
+//! `survey_of_the_subnormal_regime`, `10⁴` arguments per family: tiny
+//! arguments, subnormal or below `2⁻⁹⁰⁰`; `±(1 ± δ)` with such a `δ`;
+//! `exp`, `exp_m1` on `[−745.2, −670]` and `exp2` on `[−1076, −967]`),
+//! every function of one argument stays within `2.91u²` relative for
+//! results of at least `2⁻⁹⁶⁸` (`log10` of tiny arguments; most are below
+//! `1.5`) and within `0.99η` absolute below (`log2`, `log10` at `1 ± δ`;
+//! `exp`, `exp2` `0.75η`; the larger search below reaches `1.01η`, the
+//! relative term included). The directed and property tests of that regime
+//! also cover `sin_cos`, `powi`, `powf` and `atan2`. They found four
+//! defects, fixed before publication: `acos(1 − δ)` and `acosh(1 + δ)`
+//! with `δ < 2⁻⁹⁶⁹` (up to `u` relative; Lemma W), `atanh(±(1 − δ))` with
+//! `δ < 2⁻¹⁰²³` (`±∞`; the second form of `atanh`), and `atan2` with a
+//! quotient below `2⁻⁹⁶⁸` rounded twice (up to `1.26η` beyond the relative
+//! term in a search of `3·10⁵`, `37` violations; step Q1). The `#[ignore]`d
+//! `search_of_subnormal_results` (`10⁶` arguments per family, results or
+//! arguments below `2⁻⁹⁶⁸`, trailing components often subnormal) finds no
+//! violation after the fixes; beyond the relative term the error is at
+//! most `0.75η` for `atan2`, `exp`, `exp2`, `powi`, `powf`, `0.998η` for
+//! `log2` and `log10` at `1 + δ`, and `0` for the functions that return
+//! their tiny argument.
+//!
 //! ## Cost
-//! Time per call (ns, median of 21 runs over 1 024 independent arguments,
+//! The numbers below were measured by a harness outside the tree; the
+//! example `elementary_bench` has its rows and its method, and prints the
+//! table with the backend, the target and the load average. Time per call (ns,
+//! median of 21 runs over 1 024 independent arguments,
 //! so a throughput; release, Apple M2 Pro on AC power, load average 3.0
 //! from other sessions): `exp` 232, `exp2` 214, `exp_m1` 241, `ln` 430,
 //! `ln_1p` 443, `log2` 439, `log10` 443, `powi(x, 7)` 53, `powi(x, −100)`
@@ -535,8 +682,11 @@
 //! ## The declared bounds
 //! The column "proven" is the constant of the proof in this chapter,
 //! rounded up; "declared" is the row of [`DoubleDouble::FUNCTION_BOUNDS`].
+//! Both are bounds on `|z − f(x)|`: the numbers are in units of `u²|f|`
+//! (`u²|f|` times the growth term where there is one); the terms `2⁻²⁰⁰`,
+//! `2⁻³¹⁵` (times `1 + tan²` for `tan`) are absolute.
 //!
-//! | function | declared (`u²`) | proven (`u²`) | how |
+//! | function | declared | proven | how |
 //! |---|---|---|---|
 //! | `exp`, `exp2` | `8` | `4.6` | Algorithm E |
 //! | `exp_m1` | `8` | `7.2` | Algorithm M |
@@ -546,7 +696,7 @@
 //! | `powi` | `15 + 4\|n\|` | `11 + 4\|n\|` | Algorithm P |
 //! | `powf` | `16 + 11\|y ln x\|` | `4.6 + 10.7\|y ln x\|` | `exp(y ln x)` (Theorem F) |
 //! | `sin`, `cos`, `sin_cos` | `8\|f\| + 2⁻²⁰⁰` | `6.9\|f\| + 2⁻³¹⁵` | Algorithms R and K |
-//! | `tan` | `32\|tan\| + 2⁻²⁰⁰(1 + tan²)` | `27.4\|tan\| + 2⁻³¹⁵(1 + tan²)` | Algorithms R and K, D2 |
+//! | `tan` | `32\|tan\| + 2⁻²⁰⁰(1 + tan²)` | `27.4\|tan\| + 2⁻³¹⁵(1 + tan²)` (odd quadrant with `\|r*\| < 2⁻³⁰⁰`, never observed: the declared bound) | Algorithms R and K, D2 |
 //! | `atan` | `8` | `5.8` | Algorithm T |
 //! | `atan2`, `asin`, `acos` | `32` | `20`, `26.1`, `26.1` | Algorithm T, composition |
 //! | `sinh`, `cosh`, `tanh` | `32` | `18.7`, `15.1`, `26.4` | Algorithms E and M, composition |
@@ -1392,6 +1542,22 @@ fn sin_from(q: u32, r: DoubleDouble, negative: bool) -> DoubleDouble {
     if negative { -z } else { z }
 }
 
+/// `2⁻³⁸²`: the smallest nonzero `|r|` of Algorithm R (step S4).
+const REDUCTION_QUANTUM: f64 = f64::from_bits((1023 - 382) << 52);
+
+/// `tan x` from `(q, r)` and the sign of `x` (steps S3, S4).
+fn tan_from(q: u32, r: DoubleDouble, negative: bool) -> DoubleDouble {
+    let r = if q % 2 == 1 && r.hi() == 0.0 {
+        // Step S4 (never observed: |r*| < 2⁻³¹⁵).
+        DoubleDouble::from_f64(REDUCTION_QUANTUM)
+    } else {
+        r
+    };
+    let (s, c) = (sin_kernel(r, SIN_TERMS), cos_kernel(r));
+    let z = if q.is_multiple_of(2) { s / c } else { -(c / s) };
+    if negative { -z } else { z }
+}
+
 /// `cos x` from `(q, r)` (step S3).
 fn cos_from(q: u32, r: DoubleDouble) -> DoubleDouble {
     match q {
@@ -1438,9 +1604,7 @@ impl DoubleDouble {
             return Self::NAN;
         }
         let (q, r) = quadrant(self.abs());
-        let (s, c) = (sin_kernel(r, SIN_TERMS), cos_kernel(r));
-        let z = if q % 2 == 0 { s / c } else { -(c / s) };
-        if self.hi().is_sign_negative() { -z } else { z }
+        tan_from(q, r, self.hi().is_sign_negative())
     }
 
     /// `(sin x, cos x)` from one argument reduction; the same bits as
@@ -1462,6 +1626,8 @@ const ATAN_DIRECT: f64 = 1.0 / 64.0;
 const ATAN_RECIP: f64 = 8.0;
 /// The last term `t^(2m+1)/(2m+1)` of the series of `atan t` (`|t| ≤ 1/64`).
 const ATAN_TERMS: usize = 9;
+/// `2⁻⁹⁶⁸`: a smaller scaled magnitude below it takes step Q1 of `atan2`.
+const ATAN2_TINY: f64 = f64::from_bits((1023 - 968) << 52);
 /// `2⁶⁰⁰`: the scale of a tiny quotient in `atan2`.
 const ATAN2_SCALE: i32 = 600;
 
@@ -1499,12 +1665,25 @@ fn atan_positive(a: DoubleDouble) -> DoubleDouble {
     theta + atan_series(t)
 }
 
+/// `2⁻⁹⁶⁸`: below it Algorithm R loses its bound, and step W scales.
+const SQRT_SAFE: f64 = f64::from_bits((1023 - 968) << 52);
+
+/// `√v` for `v ≥ 0` by step W (Lemma W): Algorithm R, on `v · 2⁶⁰⁰` when
+/// `0 < v_h < 2⁻⁹⁶⁸`.
+fn sqrt_w(v: DoubleDouble) -> DoubleDouble {
+    if 0.0 < v.hi() && v.hi() < SQRT_SAFE {
+        v.ldexp(600).sqrt().ldexp(-300)
+    } else {
+        v.sqrt()
+    }
+}
+
 /// `√((1 − a)(1 + a))` for `0 ≤ a ≤ 1` (`asin`, `acos`).
 fn cosine_of_arcsine(a: DoubleDouble) -> DoubleDouble {
     if a.hi() >= 0.5 {
-        (DoubleDouble::from_sum(1.0 - a.hi(), -a.lo()) * (a + 1.0)).sqrt()
+        sqrt_w(DoubleDouble::from_sum(1.0 - a.hi(), -a.lo()) * (a + 1.0))
     } else {
-        (-a.square() + 1.0).sqrt()
+        sqrt_w(-a.square() + 1.0)
     }
 }
 
@@ -1572,18 +1751,24 @@ impl DoubleDouble {
         let (ay, ax) = (y.abs(), x.abs());
         let s = exponent(ay.hi().max(ax.hi()).max(f64::MIN_POSITIVE));
         let (ay, ax) = (ay.ldexp(-s), ax.ldexp(-s));
-        let quotient = |n: Self, d: Self| {
-            if n.hi() < TINY {
+        // Steps Q1–Q3; `m` is the unscaled `n`.
+        let quotient = |m: Self, n: Self, d: Self| {
+            if n.hi() < ATAN2_TINY {
+                let (mu, e) = split(m);
+                let k = i32::try_from(e - i64::from(s)).expect("|e − s| < 2¹¹");
+                (mu / d).ldexp(k)
+            } else if n.hi() < TINY {
                 (n.ldexp(ATAN2_SCALE) / d).ldexp(-ATAN2_SCALE)
             } else {
                 n / d
             }
         };
+        let (my, mx) = (y.abs(), x.abs());
         let z = if ay <= ax {
-            let z = atan_positive(quotient(ay, ax));
+            let z = atan_positive(quotient(my, ay, ax));
             if x_left { Self::PI - z } else { z }
         } else {
-            let z = atan_positive(quotient(ax, ay));
+            let z = atan_positive(quotient(mx, ax, ay));
             if x_left {
                 Self::FRAC_PI_2 + z
             } else {
@@ -1764,7 +1949,7 @@ impl DoubleDouble {
             ln_positive(self + (self.square() - 1.0).sqrt())
         } else {
             let d = Self::from_sum(h - 1.0, self.lo());
-            (d + (d * (d + 2.0)).sqrt()).ln_1p()
+            (d + sqrt_w(d * (d + 2.0))).ln_1p()
         }
     }
 
@@ -1794,7 +1979,12 @@ impl DoubleDouble {
         } else {
             -a + 1.0
         };
-        let z = (a.ldexp(1) / den).ln_1p().ldexp(-1);
+        let z = if den.hi() < f64::MIN_POSITIVE {
+            // 1 − a subnormal: 2a/(1 − a) may exceed Ω.
+            (ln_positive(a + 1.0) - ln_positive(den)).ldexp(-1)
+        } else {
+            (a.ldexp(1) / den).ln_1p().ldexp(-1)
+        };
         if negative { -z } else { z }
     }
 }
@@ -1843,6 +2033,47 @@ mod tests {
 
     fn q(n: i64, d: i64) -> Iv {
         Iv::int(n).div(&Iv::int(d))
+    }
+
+    /// Step S4, which no known argument reaches: an odd quadrant with `r =
+    /// 0` gives `∓2³⁸²`, within the declared bound of `tan` for every
+    /// `|r*| < 2⁻³¹⁵` consistent with `r = 0`; an even one gives `±0`.
+    #[test]
+    fn tangent_at_a_zero_reduction() {
+        for (q, neg) in [(1, false), (3, false), (1, true), (3, true)] {
+            let z = tan_from(q, DoubleDouble::ZERO, neg);
+            let want = if neg {
+                oracle::pow2f(382)
+            } else {
+                -oracle::pow2f(382)
+            };
+            // −cos r / sin r at r = 2⁻³⁸²: 2³⁸²(1 − 2⁻⁷⁶⁵/…), finite.
+            assert!(
+                z.hi() == want && z.lo().abs() < 1e-100 * want.abs(),
+                "q = {q}: {z:?}"
+            );
+            // tan x = −cot r* ≈ −1/r*: |z − tan x| ≤ 2⁻²⁰⁰(1 + tan²x), in
+            // log₂ terms, for |r*| from 2⁻³¹⁵ down.
+            for k in 315..=1000 {
+                let cot = oracle::pow2f(k);
+                let err = oracle::pow2f(382) + cot;
+                let floor = oracle::pow2f(-200) * (1.0 + cot * cot);
+                assert!(err <= floor || !floor.is_finite(), "k = {k}");
+            }
+        }
+        for q in [0, 2] {
+            let z = tan_from(q, DoubleDouble::ZERO, false);
+            assert_eq!(z.hi(), 0.0);
+        }
+        // r ≠ 0: the same bits as before step S4 existed.
+        let r = DoubleDouble::from_f64(0.25);
+        let (s, c) = (sin_kernel(r, SIN_TERMS), cos_kernel(r));
+        let z = tan_from(1, r, false);
+        let old = -(c / s);
+        assert_eq!(
+            (z.hi().to_bits(), z.lo().to_bits()),
+            (old.hi().to_bits(), old.lo().to_bits())
+        );
     }
 
     #[test]

@@ -90,6 +90,11 @@ required-features = ["sparse"]
 name = "dd_bench"
 required-features = ["sparse"]
 
+# The timing harness of the elementary functions (Chapter 11.11, "Cost"):
+# a Markdown table; no feature needed.
+[[example]]
+name = "elementary_bench"
+
 # The experiment behind the default of `LuOptions::update_multiplier_limit`
 # (L1.8, D-0113): Forrest–Tomlin exchanges with tiny pivots, f64 and dd.
 [[example]]

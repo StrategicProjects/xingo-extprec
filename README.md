@@ -282,19 +282,28 @@ an `f64` (`x += 1.0`) for `DoubleDouble` (`Interval` has both); `floor`,
    `1 + 2⁻⁸⁰` (the neglected products of errors), and every declared
    constant exceeds it by far more (the smallest margin is `log2` and
    `log10`: 12 declared, 11.7 proven).
-2. **Same bits across platforms: observed on three targets.** The design
-   gives the same bits on every target; the test suite, with the golden
-   bits of the elementary functions and the SIMD kernels compared bit for
-   bit with the scalar reference, was run on aarch64 (macOS, NEON), on
-   x86_64 macOS under emulation (Rosetta, which announces no AVX2: the
-   scalar path) and on x86_64 Linux with AVX2 + FMA (a Xeon E5 v4: the
-   AVX2 path). Other targets, 32-bit ones included, were not run. The CI
-   of the mirror runs the tests on x86_64 (`ubuntu-latest`).
+2. **Same bits across platforms: observed on the targets of the CI.** The
+   design gives the same bits on every target; the test suite, with the
+   golden bits of the elementary functions and the SIMD kernels compared
+   bit for bit with the scalar reference, runs in the CI of the mirror on
+   x86_64 Linux, x86_64 Windows, aarch64 Linux and macOS (NEON) and i686
+   Linux (32 bits), and was run by hand on x86_64 Linux with AVX2 + FMA (a
+   Xeon E5 v4: the AVX2 path) and on x86_64 macOS under emulation (the
+   scalar path). Not run: big-endian targets, WebAssembly, and x86 CPUs
+   without SSE2.
 3. The bounds hold for operands in the "safe range" (every `two_prod`
    product of magnitude at least `2⁻⁹⁶⁹` or zero). Below it the operations
    stay normalized with an absolute error of order `2⁻¹⁰⁷⁴`; `Interval`
-   and `verify` account for underflow explicitly. The subnormal regime of
-   the elementary functions was sampled only for `exp` and `exp2`.
+   and `verify` account for underflow explicitly. The elementary
+   functions state their bounds with that `η = 2⁻¹⁰⁷⁴` added for results
+   below `2⁻⁹⁶⁸`, and all 23 are tested there against the oracle, at
+   directed points and in property tests: subnormal arguments, normal
+   ones with a subnormal trailing component (`1 ± δ` with `δ` down to
+   `2⁻¹⁰⁷⁴` included), and results that underflow (`exp`, `exp2`,
+   `exp_m1`, `powi`, `powf`, `atan2`). That regime is tested, not
+   exhausted: `sin` and `tan` were not driven to subnormal results other
+   than from tiny arguments (near nonzero multiples of `π` the absolute
+   term `2⁻²⁰⁰` of their bound is far larger than `η`).
 4. `verify` bounds residuals, not the error `‖x − x*‖` (that needs a
    rigorous bound on `‖A⁻¹‖`). `polish` stops on a per-row test
    `|r_i| ≤ τ (Σ_j |a_ij x_j| + |b_i|)`; on bases with degenerate rows it
@@ -303,7 +312,10 @@ an `f64` (`x += 1.0`) for `DoubleDouble` (`Interval` has both); `floor`,
    `ln` 430, `sin` 344, `atan` 190, `powf` 753) against 1.9 ns for a
    double-double product and 2.5 ns for `f64::exp`. `sin_cos` shares the
    reduction, not the kernels (599 ns). Measured once, on one machine,
-   under load from other processes.
+   under load from other processes, by a harness since replaced by the
+   example `elementary_bench` (`cargo run --release --example
+   elementary_bench`, no feature needed), which prints the same rows on
+   any machine.
 
 ## Measured cost
 

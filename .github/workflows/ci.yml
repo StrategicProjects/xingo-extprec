@@ -64,10 +64,12 @@ jobs:
           cargo doc --no-deps --no-default-features --document-private-items
         env:
           RUSTDOCFLAGS: -D warnings
-      # The examples print the Markdown tables of the measurements (they need
-      # the feature `sparse`); release, because `ft_limit` takes about 90 s
-      # there. The second column of `dd_bench`'s output is the SIMD backend
-      # of this runner (`avx2` or `scalar`).
+      # The examples print the Markdown tables of the measurements (all but
+      # `elementary_bench` need the feature `sparse`); release, because
+      # `ft_limit` takes about 90 s there. The second column of `dd_bench`'s
+      # output is the SIMD backend of this runner (`avx2` or `scalar`), and
+      # `elementary_bench` names it in its header. Run only: no timing is
+      # asserted.
       - name: Examples
         run: |
           cargo build --examples
@@ -75,6 +77,8 @@ jobs:
           cargo run --release --example dd_bench k8
           cargo run --release --example dd_profile
           cargo run --release --example ft_limit
+          cargo run --release --example elementary_bench
+          cargo run --release --no-default-features --example elementary_bench
       - name: Package (dry run)
         run: cargo publish --dry-run
 
