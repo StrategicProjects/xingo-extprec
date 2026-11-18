@@ -77,3 +77,37 @@ jobs:
           cargo run --release --example ft_limit
       - name: Package (dry run)
         run: cargo publish --dry-run
+
+  # The same bits on every target is a property of the design (invariant D5
+  # of Chapter 11.11, K1 of Chapter 11.5): the golden bits of the elementary
+  # functions and the SIMD kernels against the scalar reference are checked
+  # here on the targets the job above does not cover.
+  targets:
+    name: test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "aarch64 macOS, NEON", os: macos-latest, target: "" }
+          - { name: "x86_64 Windows", os: windows-latest, target: "" }
+          - { name: "aarch64 Linux, NEON", os: ubuntu-24.04-arm, target: "" }
+          - { name: "i686 Linux, 32 bits", os: ubuntu-latest, target: i686-unknown-linux-gnu }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: 32-bit C toolchain
+        if: matrix.target == 'i686-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-multilib
+      - name: Test (debug and release; default and no default features)
+        shell: bash
+        run: |
+          T="${{ matrix.target }}"
+          if [ -n "$T" ]; then T="--target $T"; fi
+          cargo test $T
+          cargo test $T --release
+          cargo test $T --no-default-features
