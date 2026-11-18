@@ -5,7 +5,7 @@ All notable changes to `xingo-extprec` are recorded here. The format follows
 follows [Semantic Versioning](https://semver.org/); before 1.0, a minor
 version may change the public API.
 
-## [0.1.0] — Unreleased
+## [0.1.0] — 2026-11-18
 
 The first release: the extended-precision layer of the Xingó solver,
 published as a crate that depends on nothing in the solver except,
@@ -105,5 +105,4 @@ a guarantee, and its proof is the chapter's own (reviewed before release by
 an independent reviewer with 262 000 adversarial cases checked in exact
 arithmetic, no false bound found).
 
-<!-- TODO(owner): replace "Unreleased" in the 0.1.0 heading with the date of publication, and add the link line below. -->
-<!-- [0.1.0]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.0 -->
+[0.1.0]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.0
