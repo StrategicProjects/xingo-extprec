@@ -505,3 +505,83 @@ proptest! {
         prop_assert!(cert.is_finite() && q(cert) <= pow2_neg(80) * mass_max + pow2_neg(1000));
     }
 }
+
+// ---------------------------------------------------------------------
+// Near Ω (review X0.3i: the overflow of an intermediate step of the last
+// 2Sum of Dot2Err)
+// ---------------------------------------------------------------------
+
+/// Values whose partial sums touch `±Ω` and come back (as in
+/// `tests/exact.rs`).
+fn near_omega() -> BoxedStrategy<f64> {
+    let top = (0_u64..8, any::<bool>()).prop_map(|(k, neg)| {
+        let v = f64::from_bits(f64::MAX.to_bits() - k);
+        if neg { -v } else { v }
+    });
+    let half = (0_i32..5, any::<bool>(), any::<bool>()).prop_map(|(j, down, neg)| {
+        let step = f64::from(j) * 2f64.powi(918);
+        let v = if down {
+            2f64.powi(970) - step
+        } else {
+            2f64.powi(970) + step
+        };
+        if neg { -v } else { v }
+    });
+    prop_oneof![3 => top, 3 => half, 2 => normal(900, 1023), 1 => normal(-10, 10), 1 => Just(0.0)]
+        .boxed()
+}
+
+/// The minimal case of the review as one row of a residual: before the
+/// correction the enclosure was finite (and, by the margin of V3, still
+/// contained the residual); now the row is unbounded, as (K2) requires.
+#[test]
+fn residual_row_at_the_overflow_corner() {
+    let lane0 = [
+        0x7fef_ffff_ffff_fffe_u64,
+        0x7c90_0000_0000_0001,
+        0xfc8f_ffff_ffff_fffe,
+        0xfc8f_ffff_ffff_fffc,
+        0xf970_0000_0000_0000,
+    ];
+    // 16 entries and the pair (−1, b) as the 17th: lane 0 is 0, 4, 8, 12,
+    // 16 — the last is −b.
+    let mut row: Vec<(u32, f64)> = Vec::new();
+    for (k, &bits) in lane0[..4].iter().enumerate() {
+        row.push((u32::try_from(4 * k).expect("small"), f64::from_bits(bits)));
+    }
+    let b = -f64::from_bits(lane0[4]);
+    let a = csr(16, &vec![row.clone()]);
+    let x = vec![1.0; 16];
+    let r = residual(&a, &x, &[b]).expect("dimensions");
+    let exact = row.iter().fold(-q(b), |acc, &(_, v)| acc + q(v));
+    assert!(has(r[0], &exact));
+    assert_eq!(r[0], Interval::ENTIRE);
+}
+
+proptest! {
+    #![proptest_config(config(1_000))]
+
+    /// (V1) with entries, solutions and right-hand sides near `Ω`.
+    #[test]
+    fn residuals_near_omega_are_enclosed(
+        (n, rows, x, b) in (1_usize..=16, 1_usize..=4).prop_flat_map(|(n, m)| (
+            Just(n),
+            prop::collection::vec(prop::collection::vec(prop::option::weighted(0.7, near_omega()), n), m),
+            prop::collection::vec(prop_oneof![4 => Just(1.0), 1 => Just(-1.0), 1 => Just(0.5)], n),
+            prop::collection::vec(near_omega(), m),
+        )),
+    ) {
+        let rows: Rows = rows
+            .iter()
+            .map(|r| r.iter().enumerate()
+                .filter_map(|(j, v)| v.filter(|&v| v != 0.0).map(|v| (u32::try_from(j).expect("small"), v)))
+                .collect())
+            .collect();
+        let a = csr(n, &rows);
+        let r = residual(&a, &x, &b).expect("dimensions");
+        let xq: Vec<RBig> = x.iter().map(|&v| q(v)).collect();
+        for (i, (res, _)) in exact_rows(&rows, &xq, &b).iter().enumerate() {
+            prop_assert!(has(r[i], res), "row {i}: {res} is not in {:?}", r[i]);
+        }
+    }
+}

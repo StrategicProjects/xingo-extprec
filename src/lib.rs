@@ -11,8 +11,9 @@
 //! run-time dispatch (Chapter 11.5), SIMD through `pulp` (Chapter 11.6) —
 //! the dense kernel [`DdDense`] (Chapter 11.7), the profile of
 //! `LuOptions` for double-double (Chapter 11.8), [`Interval`] (Chapter
-//! 11.9), the module [`verify`] — rigorous residuals and polishing
-//! (Chapter 11.10) — and the elementary functions of [`DoubleDouble`] with
+//! 11.9), the module [`verify`] — rigorous residuals, polishing and a
+//! rigorous bound of the error of a solution (Chapter 11.10; the last added
+//! by task X0.3, decision log D-0125) — and the elementary functions of [`DoubleDouble`] with
 //! proven bounds, [`DoubleDouble::FUNCTION_BOUNDS`] (Chapter 11.11; the
 //! contract of L2.4 is decision log D-0121). The sections "Corrections to the approved
 //! contract" list what the implementation found wrong in it.
@@ -70,9 +71,12 @@
 //! 5. [`Interval`]: outward-rounded interval arithmetic on `f64` endpoints
 //!    *without* changing the rounding mode.
 //! 6. [`verify`] (feature `sparse`): rigorous enclosures of residuals
-//!    `A x − b` over the containers of `xingo-sparse`, and the polishing
+//!    `A x − b` over the containers of `xingo-sparse`, the polishing
 //!    step (iterative refinement with double-double residuals) around a
-//!    caller-supplied solve.
+//!    caller-supplied solve, and a rigorous bound of the error `‖x −
+//!    A⁻¹b‖∞` (and by component) of one approximate solution of a square
+//!    system, with a proof that `A` is nonsingular, from the caller's
+//!    transposed solve (Algorithm E, Theorem E).
 //! 7. The elementary functions of [`DoubleDouble`] (Chapter 11.11), with
 //!    the names and special cases of `f64` — `exp`, `exp2`, `exp_m1`,
 //!    `ln`, `ln_1p`, `log2`, `log10`, `powi`, `powf`, `sin`, `cos`, `tan`,
@@ -87,9 +91,11 @@
 //! Arbitrary precision (MPFR-like); complex scalars; `f32`; elementary
 //! functions of intervals (D-0121: they would need enclosures, not bounds);
 //! correctly rounded elementary functions; interval *linear algebra*
-//! (interval LU, Krawczyk, verified solution of linear systems: Rump's
-//! `verifylss`) — v0.1 verifies residuals, not solution sets; `QuadDouble`
-//! (question E4).
+//! (interval LU, Krawczyk, verified solution *sets* of interval linear
+//! systems: Rump's `verifylss` on interval data) — v0.1 bounds the error of
+//! **one** approximate solution of **one** square system with point data
+//! (Algorithm E), not solution sets; error bounds in the 2-norm;
+//! `QuadDouble` (question E4).
 //!
 //! ## Algorithms and their bounds
 //! All bounds hold in the absence of overflow and of underflow in the
@@ -210,8 +216,11 @@
 //!      `F`*: the tightest representable interval.
 //! (V1) *Residuals.* `verify::residual(A, x, b)[i] ∋ a_iᵀx − b_i` for the
 //!      stored `f64` values (C1), for every row.
+//! (E1) *Errors.* A certified `verify::forward_error_bound` is Theorem E:
+//!      `A` is nonsingular and `‖x − A⁻¹b‖∞ ≤ ε`, `|x_p − (A⁻¹b)_p| ≤ ε_p`,
+//!      for the stored data and whatever the solve the caller supplied.
 //!
-//! (Chapter 11.9 restates and proves I1–I3; Chapter 11.10, V1.)
+//! (Chapter 11.9 restates and proves I1–I3; Chapter 11.10, V1 and E1–E4.)
 //!
 //! ## How `xingo_sparse::Real` is met, and one amendment to it
 //! `Real` (Chapter 5.6) asks (R1) "the field operations are the correctly
@@ -238,8 +247,12 @@
 //!   AArch64 only, rounding mode through `unsafe` intrinsics. Here:
 //!   portable, no `unsafe`, no decorations, only the operations a residual
 //!   needs. Not used.
-//! * **INTLAB / `verifylss` (Rump).** Verified *solutions* of linear
-//!   systems are out of scope for v0.1 (above).
+//! * **INTLAB / `verifylss` (Rump).** Verified solution *sets* of interval
+//!   linear systems are out of scope for v0.1 (above). The bound of the
+//!   error of one solution by an approximate inverse (Rump 2010, §10, cited
+//!   from memory) is in, as Algorithm E: the inverse is never formed, each
+//!   row is one transposed solve of the caller, and the proof is Chapter
+//!   11.10's own.
 //! * **D-0081** recommended "`xingo-sparse` depends optionally on
 //!   `xingo-extprec`". The contract proposes the **opposite direction**
 //!   (question E1): `verify` needs the containers of `xingo-sparse`, so
@@ -438,6 +451,34 @@
 //!   (outward rounding after each operation) rather than on `dashu-ratio`;
 //!   it is equally independent of `dashu-float` and much faster.
 //!
+//! ## Corrections to the approved contract (X0.3, D-0125)
+//! Chapter 11.10 states each in place; ratified (decision log D-0125 and
+//! D-0126):
+//!
+//! * **`ForwardErrorBound::contraction`.** The contract's field
+//!   documentation read "`< 1` iff certified", but its own steps E5–E6
+//!   end *not finite* after every row contracted (an unbounded residual, or
+//!   a bound that overflows). The field follows the steps: `α` over the
+//!   rows examined, `< 1` when certified, `≥ 1` when not contracting, the
+//!   value reached (`0` if no row) when not finite.
+//! * **NaN or `±∞` in `A`** (the contract's special cases) cannot occur:
+//!   `CsrMatrix` refuses non-finite values. The same path, `β = +∞` in
+//!   step E3 and *not contracting*, is reached by an overflowing product.
+//! * **Invariant E4** needs a closure that is a function of its argument.
+//!   The BTRAN of `xingo_sparse::Lu` is not, by design: it chooses between
+//!   its hypersparse and dense paths by a moving average of the density of
+//!   the previous results, so two equal calls can sum in different orders
+//!   (on one Netlib basis, share1b, a second call returned other bits); the
+//!   same sequence of calls gives the same bits. Each result is a theorem
+//!   for its own `R` either way.
+//! * **Step E2** also discards a correction whose sum `h_i + d_i`
+//!   overflows (the contract kept it, and step E3 then refused the row).
+//! * **`kernels::dot2_err`** (found by the review of X0.3): invariant K2
+//!   failed when an intermediate step of the last 2Sum (step C4 of Chapter
+//!   11.5) overflowed at `±Ω`: step E made the error term finite and `β`
+//!   stayed finite and false. `β` is now `+∞` there; `r` keeps its bits
+//!   (Chapter 11.5, the proof of C5, "Overflow").
+//!
 //! ## History
 //! The crate was built in the tasks L2.1–L2.5 of the Xingó solver's plan.
 //! L2.1 wrote and ratified the contract (decision log D-0109). L2.2a
@@ -450,8 +491,12 @@
 //! integration test of `xingo-simplex`, which this crate does not depend
 //! on; D-0114). L2.5 used the enclosures in the solver's `--exact-check`,
 //! before its rational check (D-0120). L2.4, last, added the elementary
-//! functions (Chapter 11.11; D-0121 and D-0122). Version 0.1.0 is the
-//! state after all five.
+//! functions (Chapter 11.11; D-0121 and D-0122). Task X0.3, before the
+//! first release, wrote the contract of a rigorous bound of the error of a
+//! solution after a pilot of three methods on the Netlib bases (decision
+//! log D-0125) and implemented the approved one, Algorithm E
+//! (`verify::forward_error_bound`, Chapter 11.10). Version 0.1.0 is the
+//! state after all of these.
 //!
 //! ## References
 //! Dekker, "A floating-point technique for extending the available

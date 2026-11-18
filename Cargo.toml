@@ -80,6 +80,12 @@ required-features = ["sparse"]
 name = "verify"
 required-features = ["sparse"]
 
+# The acceptance tests of Algorithm E (Chapter 11.10, Theorem E) against
+# exact rationals, with adversarial solves.
+[[test]]
+name = "forward_error"
+required-features = ["sparse"]
+
 # The measurements behind Rule P of `xingo-sparse` (Chapter 11.8) and the
 # timing harness of the kernels (L2.2b); both print Markdown tables.
 [[example]]

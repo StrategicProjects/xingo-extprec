@@ -10,8 +10,9 @@
 
 Extended precision **for numerical linear algebra**, in pure Rust:
 double-double numbers whose every operation has a **proven** error bound,
-compensated sums and dot products, and **rigorous** interval enclosures of
-residuals `A x − b` computed in ordinary round-to-nearest arithmetic. It is
+compensated sums and dot products, **rigorous** interval enclosures of
+residuals `A x − b` and a **rigorous** bound of the error `‖x − A⁻¹b‖∞` of
+an approximate solution, computed in ordinary round-to-nearest arithmetic. It is
 the extended-precision layer of [Xingó](https://github.com/StrategicProjects/xingo),
 a linear and mixed-integer programming solver, and depends on nothing in it
 except, optionally, its sparse linear algebra crate
@@ -34,7 +35,8 @@ is a cheap intermediate step, and this crate is that step:
 
 It is **not** an arbitrary-precision library (see
 [`dashu`](https://crates.io/crates/dashu) for that), has no quad-double, no
-complex numbers, and verifies *residuals*, not solution sets of linear
+complex numbers, and bounds the error of *one* approximate solution of a
+square system with point data, not the solution sets of interval linear
 systems (see "Scope" below).
 
 ## Four entry points
@@ -113,6 +115,12 @@ assert!((s - Interval::point(0.3)).certainly_within(1e-15));
 nonzero; Algorithm P *polishes* `x` by iterative refinement with
 double-double residuals around an `f64` solve the caller already has (an
 LU, say). The polished residual is then certified by Algorithm V.
+Algorithm E (`forward_error_bound`) turns an enclosed residual into a
+theorem about the solution: from at most `n` transposed solves (at most
+`2n` with the default refinement; the BTRAN of the same LU) it proves that a square `A`
+is nonsingular and bounds `‖x − A⁻¹b‖∞` and every `|x_p − (A⁻¹b)_p|`,
+whatever the solve returns — a wrong one can only prevent the
+certificate.
 
 ```rust
 use xingo_extprec::verify::{PolishOptions, PolishStop, norm_inf_bound, polish, residual, residual_of_dd};
@@ -142,6 +150,30 @@ let mut xd = x.map(DoubleDouble::from_f64);
 let report = polish(&a, &b, &mut xd, &mut solve, &PolishOptions::default())?;
 assert_eq!(report.stop, PolishStop::Converged);
 assert!(norm_inf_bound(&residual_of_dd(&a, &xd, &b)?) <= 1e-25);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+```rust
+use xingo_extprec::verify::{ForwardErrorOptions, forward_error_bound, residual};
+use xingo_sparse::CsrMatrix;
+
+// The same A = [1 2; 3 4] and b = A (1/3, 1/3), an f64 solution x.
+let a = CsrMatrix::from_raw_parts(2, vec![0, 2, 4], vec![0, 1, 0, 1], vec![1.0, 2.0, 3.0, 4.0])?;
+let b = [1.0, 7.0 / 3.0];
+let x = [1.0 / 3.0, 1.0 / 3.0];
+// A⁻ᵀ c in f64 (in practice the BTRAN of an LU of A).
+let mut solve_transpose = |c: &mut [f64]| {
+    let (c0, c1) = (c[0], c[1]);
+    c[0] = -2.0 * c0 + 1.5 * c1;
+    c[1] = c0 - 0.5 * c1;
+};
+let r = residual(&a, &x, &b)?;
+let e = forward_error_bound(&a, &r, &mut solve_transpose, &ForwardErrorOptions::default())?;
+// A theorem: A is nonsingular and ‖x − A⁻¹b‖∞ ≤ e.norm_inf for the stored
+// data (b₂ is the f64 nearest 7/3, so A⁻¹b is not (1/3, 1/3) exactly).
+assert!(e.is_certified());
+assert!(e.norm_inf <= 1e-15 && e.componentwise.iter().all(|&ep| ep <= e.norm_inf));
+assert_eq!(e.solves, 4);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
@@ -254,7 +286,8 @@ In: the error-free transformations `two_sum`, `fast_two_sum`, `two_prod`;
 conversions, 23 elementary functions and 19 constants; the compensated and
 double-double slice kernels; `Interval` with `+ − · /`, `sqrt`, `square`,
 `abs`, hull, intersection and the verified predicates; rigorous residual
-enclosures and polishing over the containers of `xingo-sparse`; the
+enclosures, polishing and a rigorous bound of the error of an approximate
+solution (Algorithm E) over the containers of `xingo-sparse`; the
 `DenseKernel` `DdDense`.
 
 Out, by decision: arbitrary precision; complex scalars; `f32`; a
@@ -262,8 +295,9 @@ Out, by decision: arbitrary precision; complex scalars; `f32`; a
 resolve would reopen it — none of the 93 Netlib optimal bases needed it);
 elementary functions of intervals (they would need enclosures, not bounds);
 correctly rounded elementary functions; interval linear algebra (interval
-LU, Krawczyk, verified solution sets à la `verifylss`); the QD library's
-"sloppy" addition.
+LU, Krawczyk, verified solution sets of interval systems à la
+`verifylss`); error bounds in the 2-norm; the QD library's "sloppy"
+addition.
 
 Not in 0.1, and additive when they come: arithmetic operators with an
 `f64` on the left (`f64 + DoubleDouble`) and the assignment operators with
@@ -311,23 +345,40 @@ an `f64` (`x += 1.0`) for `DoubleDouble` (`Interval` has both); `floor`,
    exhausted: `sin` and `tan` were not driven to subnormal results other
    than from tiny arguments (near nonzero multiples of `π` the absolute
    term `2⁻²⁰⁰` of their bound is far larger than `η`).
-4. `verify` bounds residuals, not the error `‖x − x*‖` (that needs a
-   rigorous bound on `‖A⁻¹‖`). `polish` stops on a per-row test
+4. `verify::forward_error_bound` bounds the error of **one** solution of
+   **one** square system with point data, in the ∞-norm and by component;
+   solution sets of interval systems, 2-norm bounds and non-square systems
+   are out. It costs at most `n` transposed solves of the caller (at most
+   `2n` with the default refinement) plus up to `n · nnz(A)` compensated products, and
+   is quadratic in `n` with dense solves: measured, 15 s for the 93
+   optimal bases of Netlib (both an `f64` and a polished solution; the
+   largest, `m = 6 071`, 5.9 s); on a sparse synthetic family (measured
+   once, in the contract's pilot) 21 s at `n = 10⁴` and 4.5 min at `3 ·
+   10⁴`. A singular `A` is never certified. On dense test matrices it
+   certified up to `κ(A) ≈ 10¹⁶` with refinement (`≈ 10¹⁴` without) —
+   measurements, not a guarantee in either direction: whether a matrix is
+   certified depends on the solve and the data, not on `κ` alone (the
+   review saw a 4 × 4 permutation-like matrix with `κ∞ ≈ 10⁴⁷²`
+   certified). For a polished
+   solution the bound reflects the width of the residual enclosure, not the
+   true error (overestimation up to `7.7 · 10⁴` observed). Its proof (Theorem E, Chapter 11.10) is the chapter's own; before release it was reviewed by an independent reviewer with 262 000 adversarial cases checked in exact arithmetic, and no false bound was found. `polish` stops on a per-row test
    `|r_i| ≤ τ (Σ_j |a_ij x_j| + |b_i|)`; on bases with degenerate rows it
    often ends `Stagnated`, which is harmless (9 of the 93 Netlib bases).
-5. Cost: an elementary function takes 190–750 ns per call (`exp` 232,
-   `ln` 430, `sin` 344, `atan` 190, `powf` 753) against 1.9 ns for a
-   double-double product and 2.5 ns for `f64::exp`. `sin_cos` shares the
-   reduction, not the kernels (599 ns). Measured once, on one machine,
-   under load from other processes, by a harness since replaced by the
-   example `elementary_bench` (`cargo run --release --example
-   elementary_bench`, no feature needed), which prints the same rows on
-   any machine.
+5. Cost: an elementary function takes 190–760 ns per call on an Apple M2
+   Pro (`exp` 233, `ln` 427, `sin` 344, `atan` 196, `powf` 758) and
+   310–1 030 ns on a Xeon E5-2699 v4 (`exp` 361, `ln` 595, `sin` 596,
+   `atan` 312, `powf` 1 033), against 1.9 ns for a double-double product
+   on the M2 Pro. `sin_cos` shares the reduction, not the kernels.
+   Measured on those two machines only, three runs each, neither of them
+   idle; the example `elementary_bench` (`cargo run --release --example
+   elementary_bench`, no feature needed) prints the same rows on any
+   machine.
 
 ## Measured cost
 
 On an Apple M2 Pro (NEON), release builds, medians recorded in the
-solver's benchmark log (x86_64 not measured):
+solver's benchmark log (on x86_64 only the elementary functions of
+limitation 5 were measured):
 
 | what | cost |
 |---|---|
@@ -341,7 +392,11 @@ solver's benchmark log (x86_64 not measured):
 
 In the Xingó solver, certifying the residuals of the optimal basis of each
 of the 93 Netlib LPs by intervals takes 0.18 % of the solve time in total
-(`--exact-check=interval`), and all 93 come out certified.
+(`--exact-check=interval`), and all 93 come out certified. Bounding the
+error of the basic solution by `forward_error_bound` certifies all 93 too,
+in 15 s for both an `f64` and a polished solution (the dual simplex takes
+about 30 s), with `ε` equal to the error measured against the polished
+point to three digits.
 
 ## Design notes
 

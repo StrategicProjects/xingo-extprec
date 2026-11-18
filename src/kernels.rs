@@ -34,9 +34,11 @@
 //! C3. \[Combine.\] `p ← p_0`, `s ← s_0`, `e ← e_0`. For `k = 1, …, W − 1`:
 //!     `(p, q) ← 2Sum(p, p_k)`; `s ← RN(s + RN(s_k + q))`; `e ← RN(e +
 //!     RN(e_k + |q|))`.
-//! C4. \[Result.\] `r ← 2Sum(p, s)`, with step E of Chapter 11.2.
+//! C4. \[Result.\] `(r_h, r_ℓ) ← 2Sum(p, s)`, then step E of Chapter 11.2:
+//!     `r ← (r_h, r_ℓ)`, with `r_ℓ` replaced by `0` if it is not finite.
 //! C5. \[Bound, `dot2_err` only.\] If `n = 0`, `β ← 0`. If `2(n + 3)u ≥ 1`,
-//!     or `p`, `s`, `e` or `r` is not finite, `β ← +∞`. Otherwise, in `f64`
+//!     or `p`, `s`, `e`, `r` or the error term `r_ℓ` of the 2Sum of C4
+//!     *before* step E is not finite, `β ← +∞`. Otherwise, in `f64`
 //!     arithmetic, `δ ← (n + 3)u / (1 − 2(n + 3)u)` and `β ← ((δ e + 3η/u)
 //!     (1 + 8u))`.
 //!
@@ -108,10 +110,22 @@
 //! the larger `1 − (2n + 5)u`), the product `δ e` errs by at most a factor
 //! `(1 − u)` and `η/2`, the two remaining operations by `(1 − u)` each (the
 //! term `3η/u = 3 · 2⁻¹⁰²¹` keeps them out of the subnormal range), and `(1
-//! + 8u)(1 − u)⁴ ≥ 1`, `3η/u − η/2 ≥ n η/2 + η/2`. Overflow anywhere
-//! leaves an infinity or a NaN in `p`, `s` or `e` (the operations are
-//! additions, products and absolute values: none maps a non-finite value
-//! back to a finite one), which C5 tests. This is Algorithm 5.8 and
+//! + 8u)(1 − u)⁴ ≥ 1`, `3η/u − η/2 ≥ n η/2 + η/2`.
+//!
+//! *Overflow.* The argument needs every operation exact or rounded as
+//! stated, and that is lost only by an overflow — of a sum, of a product,
+//! or of an *intermediate* step of a 2Sum whose first operand is `±Ω`
+//! (invariant T1 of Chapter 11.1: then the error term is `±∞` or NaN, and
+//! conversely a 2Sum whose error term is finite had no step overflow and
+//! is exact). In steps C2 and C3 every such value flows into `p`, `s` or
+//! `e` through additions and absolute values, none of which maps a
+//! non-finite value back to a finite one, and C5 tests the three. The one
+//! exception is step C4: its error term `r_ℓ` goes *only* into `r`, and step
+//! E replaces it by `0` — a non-finite value made finite — so `r` can be
+//! finite and wrong by up to `ulp(Ω)/2 = 2⁹⁷⁰` (`p = Ω − 2⁹⁷¹`, `s = −2⁹⁷⁰ −
+//! …`, found by review X0.3i). C5 therefore tests `r_ℓ` itself, before step
+//! E; with it finite the 2Sum is exact and `r = p + s`. (Until X0.3i C5
+//! tested only `r`, and (K2) was false in that corner.) This is Algorithm 5.8 and
 //! Corollary 5.9 of Ogita, Rump & Oishi adapted to the lanes, to the FMA
 //! product and to a double-double result (their bound has one more term,
 //! `u|res|`, for the final rounding to `f64`).
@@ -131,7 +145,9 @@
 //!      the implementation in use.
 //! (K2) *Rigour.* `dot2_err` returns `(r, β)` with `|xᵀy − r| ≤ β` for
 //!      every input; `β = +∞` when a hypothesis fails (invariant C3 of
-//!      Chapter 11).
+//!      Chapter 11), the overflow of an intermediate step of the 2Sum of C4
+//!      included (the proof of C5, "Overflow"). Checked against exact
+//!      rationals, near `Ω` too.
 //!
 //! ## References
 //! Ogita, Rump & Oishi, "Accurate sum and dot product", SIAM J. Sci.
@@ -209,13 +225,17 @@ impl Compensated {
         const MAX_TERMS: u64 = 1 << 52;
 
         let (p, s, e) = self.combine();
+        // C4; step E of `from_sum` hides a non-finite error term, which
+        // C5 must see (the proof of C5, "Overflow").
+        let (_, r_lo) = two_sum(p, s);
         let r = DoubleDouble::from_sum(p, s);
         // C5.
         if n == 0 {
             return (r, 0.0);
         }
         let terms = u64::try_from(n).map_or(u64::MAX, |n| n.saturating_add(3));
-        let finite = p.is_finite() && s.is_finite() && e.is_finite() && r.is_finite();
+        let finite =
+            p.is_finite() && s.is_finite() && e.is_finite() && r.is_finite() && r_lo.is_finite();
         if terms >= MAX_TERMS || !finite {
             return (r, f64::INFINITY);
         }
@@ -403,7 +423,9 @@ pub(crate) use dispatch;
 /// `Σ xᵢ` of `f64` values as a double-double, as accurate as if summed
 /// in twice the working precision (Sum2 of Ogita, Rump & Oishi, over `W =
 /// 4` lanes: Algorithm C of Chapter 11.5): `|result − Σxᵢ| ≤ γ²_{n+3}
-/// Σ|xᵢ|` barring overflow.
+/// Σ|xᵢ|` barring overflow. Overflow includes an intermediate step of a
+/// 2Sum whose first operand is `±Ω` (invariant T1 of Chapter 11.1): there
+/// the result may be finite with a relative error of order `u`.
 #[must_use]
 pub fn sum2(x: &[f64]) -> DoubleDouble {
     dispatch!(|lanes| crate::simd::sum2(lanes, x).result());
@@ -412,7 +434,10 @@ pub fn sum2(x: &[f64]) -> DoubleDouble {
 
 /// `xᵀy` of `f64` vectors as a double-double (Dot2, over `W = 4` lanes:
 /// Algorithm C of Chapter 11.5): `|result − xᵀy| ≤ γ²_{n+5} |x|ᵀ|y| + n
-/// η/2` barring overflow. Panics if the lengths differ.
+/// η/2` barring overflow. Overflow includes an intermediate step of a 2Sum
+/// whose first operand is `±Ω` (invariant T1 of Chapter 11.1): there the
+/// result may be finite with a relative error of order `u`; [`dot2_err`]
+/// reports that case with `β = +∞`. Panics if the lengths differ.
 #[must_use]
 pub fn dot2(x: &[f64], y: &[f64]) -> DoubleDouble {
     assert_eq!(x.len(), y.len(), "dot2: the lengths differ");
@@ -422,7 +447,8 @@ pub fn dot2(x: &[f64], y: &[f64]) -> DoubleDouble {
 
 /// As [`dot2`], with a rigorous bound: returns `(r, β)` with `|xᵀy −
 /// r| ≤ β` (Dot2Err; step C5 of Chapter 11.5 and its proof). `β = +∞`
-/// when a hypothesis fails (overflow, NaN, `2(n + 3)u ≥ 1`): invariant C3.
+/// when a hypothesis fails (overflow — of an intermediate step of a 2Sum at
+/// `±Ω` too —, NaN, `2(n + 3)u ≥ 1`): invariant C3.
 /// Panics if the lengths differ.
 #[must_use]
 pub fn dot2_err(x: &[f64], y: &[f64]) -> (DoubleDouble, f64) {
@@ -537,6 +563,90 @@ mod tests {
         ))]
         let expected = "scalar";
         assert_eq!(backend(), expected);
+    }
+
+    /// The minimal case of review X0.3i (M1): in lane 0, the terms of 17
+    /// leave `p = Ω − 2⁹⁷¹` and `s = −2⁹⁷⁰ − …`, the 2Sum of step C4 rounds
+    /// `p + s` to `p` and its error term overflows (invariant T1 of Chapter
+    /// 11.1). Before the correction of C5, `β` was finite (`≈ 6.6e277`) and
+    /// `|xᵀy − r| = 2⁹⁷⁰`; now `β = +∞`, on both paths, and `r` keeps its
+    /// bits.
+    #[test]
+    fn dot2_err_refuses_when_the_two_sum_of_c4_overflows() {
+        use dashu_ratio::RBig;
+        let lane0 = [
+            0x7fef_ffff_ffff_fffe_u64,
+            0x7c90_0000_0000_0001,
+            0xfc8f_ffff_ffff_fffe,
+            0xfc8f_ffff_ffff_fffc,
+            0xf970_0000_0000_0000,
+        ];
+        let mut x = [0.0; 17];
+        for (k, bits) in lane0.iter().enumerate() {
+            x[4 * k] = f64::from_bits(*bits);
+        }
+        let y = [1.0; 17];
+        let exact = x.iter().fold(RBig::from(0), |acc, &v| {
+            acc + RBig::try_from(v).expect("finite")
+        });
+        let reference = reference::dot2(&x, &y).result_with_bound(17);
+        let dispatched = dot2_err(&x, &y);
+        for (r, beta) in [reference, dispatched] {
+            assert_eq!((r.hi().to_bits(), r.lo()), (0x7fef_ffff_ffff_fffe, 0.0));
+            let err = RBig::try_from(r.hi()).expect("finite") - exact.clone();
+            let err = if err < RBig::from(0) { -err } else { err };
+            assert!(err > RBig::from(0));
+            assert!(
+                beta == f64::INFINITY || err <= RBig::try_from(beta).expect("finite"),
+                "K2 fails: |xᵀy − r| = {:e} > β = {beta:e}",
+                err.to_f64().value()
+            );
+            assert_eq!(beta, f64::INFINITY);
+        }
+        // `r` is that of `dot2` (step C4 is shared).
+        assert_eq!(dot2(&x, &y), dispatched.0);
+    }
+
+    /// (K1) near `Ω`, where the 2Sums of steps C2–C4 overflow in their
+    /// intermediate steps: scalar and SIMD return the same bits (`β` of
+    /// `dot2_err` included), on every length 1 to 64.
+    #[test]
+    fn k1_near_omega() {
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for n in 1..=64 {
+            for _ in 0..50 {
+                let x: Vec<f64> = (0..n)
+                    .map(|_| {
+                        let sign = if next() & 1 == 0 { 1.0 } else { -1.0 };
+                        let j = f64::from(u8::try_from(next() % 4).expect("small"));
+                        sign * match next() % 4 {
+                            0 => f64::from_bits(f64::MAX.to_bits() - next() % 4),
+                            1 => 2f64.powi(970) + j * 2f64.powi(918),
+                            2 => 2f64.powi(970) - j * 2f64.powi(918),
+                            _ => 0.0,
+                        }
+                    })
+                    .collect();
+                let y = vec![1.0; n];
+                assert!(
+                    same_dd(sum2(&x), reference::sum2(&x).result()),
+                    "sum2 {x:?}"
+                );
+                assert!(
+                    same_dd(dot2(&x, &y), reference::dot2(&x, &y).result()),
+                    "dot2 {x:?}"
+                );
+                let (r, beta) = dot2_err(&x, &y);
+                let (r0, beta0) = reference::dot2(&x, &y).result_with_bound(n);
+                assert!(same_dd(r, r0) && same(beta, beta0), "dot2_err {x:?}");
+            }
+        }
     }
 
     #[test]

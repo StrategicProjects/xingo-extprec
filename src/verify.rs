@@ -9,11 +9,16 @@
 //!    an estimate (invariant V1);
 //! 2. *a better `x`* — Algorithm P refines `x` in double-double around a
 //!    solve the caller already has (its `f64` LU), after which Algorithm V
-//!    certifies the residual that was reached.
+//!    certifies the residual that was reached;
+//! 3. *how far `x` is from the exact solution* — Algorithm E proves, from
+//!    the enclosure of Algorithm V and `n` transposed solves (`2n` with
+//!    refinement), that a square `A` is nonsingular and bounds `‖x −
+//!    A⁻¹b‖∞` and every `|x_p − (A⁻¹b)_p|`, again a theorem (Theorem E).
 //!
-//! The module verifies **residuals**. It does not bound `‖x − A⁻¹b‖`: that
-//! needs a rigorous bound of `‖A⁻¹‖` (Rump's `verifylss`), which Chapter
-//! 11 leaves out of v0.1.
+//! Algorithm E bounds the error of **one** approximate solution of **one**
+//! square system with point data. Verified *solution sets* of interval
+//! systems (Rump's `verifylss` on interval data), interval LU and Krawczyk
+//! iteration stay out of v0.1 (Chapter 11, "Out of scope").
 //!
 //! ## Notation
 //! `A ∈ F^{m×n}` in compressed rows (`xingo_sparse::CsrMatrix<f64>`), `a_i`
@@ -49,7 +54,11 @@
 //! terms" that the contract's sketch of step V2 announced). By (K2),
 //! `|pᵀq − r| ≤ β`, i.e. `h + (ℓ − β) ≤ pᵀq ≤ h + (ℓ + β)`, and each of
 //! the two directed sums of V3 on either side moves outward. When `β =
-//! +∞` nothing is claimed (C3). ∎ (The contract's sketch had `enclose(r) +
+//! +∞` nothing is claimed (C3). ∎ (Until review X0.3i, (K2) failed when an
+//! intermediate step of the last 2Sum of Dot2Err overflowed at `±Ω`, and
+//! this proof with it; the enclosures found there still contained the
+//! residual, by the margin of V3. Now `β = +∞` in that corner and the row is
+//! `ENTIRE`: Chapter 11.5, the proof of C5, "Overflow".) (The contract's sketch had `enclose(r) +
 //! [−β, β]`, which is also correct and one to two ulps wider: it rounds
 //! `r` to its neighbours before the radius is added.)
 //!
@@ -178,6 +187,168 @@
 //! falling below `u` (to about `κ(A) k u²`), which a refinement that
 //! stores `x` in `f64` cannot do.
 //!
+//! ## Algorithm E (a rigorous bound of the error, by an implicit approximate inverse)
+//! Input: a square `A ∈ F^{n×n}` (compressed rows; one compressed-column
+//! copy is made), the enclosure `[r]` of the residual `A x̃ − b` of an
+//! approximate solution `x̃` — `n` intervals, from [`residual`] (`x̃ ∈ F^n`)
+//! or [`residual_of_dd`] (`x̃ ∈ DD^n`) — a *transposed solve* `c ↦ ≈ A⁻ᵀc`
+//! in `f64` (a closure: the BTRAN of the caller's LU) and the switch
+//! `refine_rows` of [`ForwardErrorOptions`] (default on). Output
+//! ([`ForwardErrorBound`]): `ε`, the `ε_p`, `α`, the number of solves and
+//! the outcome.
+//!
+//! *Notation.* `e_p` is the `p`-th unit vector and `δ_pq` the Kronecker
+//! delta; `a_iq` are the stored entries and `a_{:q}` the column `q`. A
+//! vector `y` of row `p` has components `y_i = h_i + ℓ_i` (two `f64`, the
+//! exact sum; `ℓ = 0` without refinement). `R` is the matrix whose row `p`
+//! is the `y` that step E3 **actually used**, taken as exact real numbers:
+//! `R` is not "the inverse", it is whatever came out, and the theorem
+//! holds for every `R`. `C = I − RA` (exact, real), `x* = A⁻¹b`, `e = x̃ −
+//! x*`. `mag(X) = max{|x| : x ∈ X}`.
+//!
+//! E0. \[Dimensions; trivial cases.\] If `A` is not square or `[r]` does not
+//!     have `n` entries: [`VerifyError::Dimension`], before any arithmetic.
+//!     If `n = 0`: certified, `ε = 0`, `α = 0`, no solve. If some `[r_i]`
+//!     is empty: not certified (*not finite*), no solve.
+//! E1. \[Row of `R`.\] For `p = 1, …, n`: `h ← e_p`, `ℓ ← 0`;
+//!     `solve_transpose(h)`. If some `h_i` is not finite: not certified
+//!     (*not finite*), stop.
+//! E2. \[Refinement, optional.\] If `refine_rows`: with `Q_p` of step E3
+//!     for this `y`, `d_q ← RN(δ_pq − Dot2(a_{:q}, h))` for `q ∈ Q_p` and
+//!     `d_q ← 0` elsewhere (`Dot2` of Chapter 11.5, *not* rigorous: it only
+//!     chooses `R`); `solve_transpose(d)`; if every `d_i` and every
+//!     `fl(h_i + d_i)` is finite, `(h_i, ℓ_i) ← h_i ⊕ d_i` (the addition
+//!     `dd + f64` of Chapter 11.2, A1: the exact sum `h_i + d_i` unless
+//!     `|h_i| = Ω`, where step E may return `(fl(h_i + d_i), 0)` — either
+//!     way a pair of finite `f64`); otherwise `y` stays the one of E1.
+//!     Nothing of this step enters the proof: `R` is the pairs that came
+//!     out, exact sums or not.
+//! E3. \[Row of `C`.\] `S_p = {i : h_i ≠ 0 or ℓ_i ≠ 0}`, `Q_p = {q : a_iq is
+//!     stored for some i ∈ S_p} ∪ {p}`. For each `q ∈ Q_p`, gather the
+//!     pairs `(a_iq, h_i)` for the stored `a_iq`, then — if step E2 set
+//!     `ℓ` — the pairs `(a_iq, ℓ_i)`, and `(−1, δ_pq)`; `(s, β) ←
+//!     Dot2Err`; `M_q ← mag(V3(s, β))`. `ρ_p ← sup(Σ_{q∈Q_p} M_q)`, the sum
+//!     in `Interval`.
+//! E4. \[Row of `R[r]`.\] `G ← Σ_{i∈S_p} ([r_i]·h_i + [r_i]·ℓ_i)` in
+//!     `Interval` (a term with a zero factor is omitted); `g_p ← mag(G)`.
+//! E5. \[Early stop.\] `α ← max(α, ρ_p)` (exact). If not `α < 1`: not
+//!     certified (*not contracting*), stop; the `α` reported is that of the
+//!     rows examined.
+//! E6. \[Norm.\] After the `n` rows: `γ ← max_p g_p`; if `γ = +∞`: *not
+//!     finite*. `ε ← sup([γ, γ] / (1 − [α, α]))` in `Interval`; if `ε = +∞`:
+//!     *not finite*.
+//! E7. \[Components.\] `ε_p ← min(ε, sup([g_p, g_p] + [ρ_p, ρ_p]·ε))`, in
+//!     `Interval`.
+//!
+//! **Theorem E.** If Algorithm E ends certified, `A` is nonsingular and,
+//! for **every** `b ∈ ℝⁿ` and `x̃ ∈ ℝⁿ` with `A x̃ − b ∈ [r]` componentwise
+//! — in use, the `b` and `x̃` whose residual [`residual`] enclosed — `x* =
+//! A⁻¹b` satisfies `‖x̃ − x*‖∞ ≤ ε` and `|x̃_p − x*_p| ≤ ε_p` for `p = 1, …,
+//! n`.
+//!
+//! *Proof.* (o) *`R` is a real matrix:* every `h_i` and `ℓ_i` used is a
+//! finite `f64` — E1 refuses a non-finite `h`, E2 keeps a correction only
+//! when every `d_i` and `fl(h_i + d_i)` is finite, and the addition A1
+//! never leaves a non-finite component then (step E of Chapter 11.2). (i) *Each `M_q` dominates `|c_pq|`.* As real numbers, `Σ_i a_iq
+//! (h_i + ℓ_i) − δ_pq = Σ_i a_iq h_i + Σ_i a_iq ℓ_i + (−1) δ_pq` (when E2
+//! did not set `ℓ`, `ℓ = 0` and the second sum is omitted) is exactly the
+//! dot product of the pairs of E3, and it equals `−c_pq` (`c_pq = δ_pq −
+//! Σ_i y_i a_iq`). By (K2) of Chapter 11.5, `|−c_pq − s| ≤ β`, with `β =
+//! +∞` when a hypothesis of Dot2Err fails (a length with `2(k + 3)u ≥ 1`,
+//! an overflow — of an intermediate step at `±Ω` too, since X0.3i — a NaN) — then
+//! V3 is `ENTIRE`, `M_q = ρ_p = +∞` and E5 refuses. By the proof of (V1)
+//! the interval V3 contains `−c_pq`, hence `|c_pq| ≤ M_q`.
+//! (ii) *The columns outside `Q_p` have `c_pq = 0` exactly:* for `q ∉ Q_p`,
+//! `q ≠ p`, and every product `a_iq y_i` has a zero factor (either `a_iq`
+//! is not stored or `i ∉ S_p`, i.e. `y_i = h_i + ℓ_i = 0`).
+//! (iii) *`ρ_p ≥ Σ_q |c_pq|`:* a sum of nonnegative reals each dominated by
+//! an `f64`, computed in `Interval` (by (I1) its `sup` dominates the exact
+//! sum). Hence `‖C‖∞ = max_p Σ_q |c_pq| ≤ α < 1`.
+//! (iv) *Nonsingularity.* `RA = I − C` with `‖C‖∞ < 1` is invertible
+//! (Neumann series), so `A` and `R` are invertible; `x*` exists and is
+//! unique.
+//! (v) *`g_p ≥ |(R r)_p|` for every `r ∈ [r]`:* `(R r)_p = Σ_i (h_i + ℓ_i)
+//! r_i = Σ_i h_i r_i + Σ_i ℓ_i r_i`; each term lies in `[r_i]·h_i` or
+//! `[r_i]·ℓ_i` (I1, with a point operand), the omitted terms (`i ∉ S_p`, or
+//! a zero factor) are zero, and the sum lies in the interval sum (I1).
+//! (vi) *The bound.* `A e = A x̃ − b = r ∈ [r]`; multiplying by `R`, `(I −
+//! C) e = R r`, i.e. `e = R r + C e`. So `‖e‖∞ ≤ ‖R r‖∞ + α ‖e‖∞`, and since
+//! `α < 1`, `‖e‖∞ ≤ ‖R r‖∞/(1 − α) ≤ γ/(1 − α) ≤ ε` — the quotient in
+//! `Interval` (I1, I3), with `▽(1 − α) > 0` because `α < 1` is an `f64`.
+//! Componentwise, `|e_p| ≤ |(R r)_p| + Σ_q |c_pq| |e_q| ≤ g_p + ρ_p ‖e‖∞ ≤
+//! g_p + ρ_p ε`, whose `sup` in `Interval` is an upper bound; and `|e_p| ≤
+//! ‖e‖∞ ≤ ε`, so the minimum of the two bounds is one. ∎
+//!
+//! Nothing in the proof depends on how `y` was obtained: a wrong, noisy or
+//! adversarial `solve_transpose` can only make `α ≥ 1` (no certificate) or
+//! the bound loose, never false (invariant E1). For an exactly singular `A`
+//! there is no `R` with `‖I − RA‖∞ < 1` (it would make `A` invertible), so
+//! Algorithm E cannot certify it (invariant E2).
+//!
+//! **Where each rounding is.** This is where textbook versions of the bound
+//! fail:
+//!
+//! | quantity | computed as | enclosed by |
+//! |---|---|---|
+//! | `R` | `f64` (E1) or double-double (E2), no bound | nothing needed: `R` *is* the numbers that came out |
+//! | `c_pq` | Dot2Err on the exact pairs of E3 | (K2) and V3: `\|c_pq\| ≤ M_q`, underflow included in `β` |
+//! | `c_pq`, `q ∉ Q_p` | not computed | exactly zero (proof, ii) |
+//! | `ρ_p = Σ M_q` | `Interval` | (I1), outward, exact under underflow (I3) |
+//! | `α = max ρ_p` | `f64::max` | exact |
+//! | `r = A x̃ − b` | [`residual`], [`residual_of_dd`] | (V1) |
+//! | `(R r)_p` | `Interval`, interval × point, `h` and `ℓ` apart | (I1) |
+//! | `γ/(1 − α)`, `g_p + ρ_p ε` | `Interval` | (I1), (I3) |
+//!
+//! The errors this avoids: computing `I − RA` in floating point and taking
+//! the norm of the result (the rounding of `RA` is of the order of `C`
+//! itself); using `‖R‖ ‖r‖` with `r` recomputed in `f64` (noise of the
+//! size of the residual itself); forgetting the underflow of the products
+//! (here it is in `β`); and accumulating the products of a double-double
+//! `R` in `f64`, whose error `≈ n u Σ|R||A|` undoes the refinement — hence
+//! `h` and `ℓ` enter Dot2Err as separate pairs, the device of (V1) for a
+//! double-double `x`.
+//!
+//! **How tight, and why.** For an `f64` solution the error *is* `R r` up to
+//! `C e`, and `C` is small: in the measurements of the contract (task X0.3,
+//! decision log D-0125) `ε/‖e‖∞` was between 1.00 and 1.04 on every
+//! certified case with `α ≤ 0.04`, and 1.00 on all 93 optimal bases of
+//! Netlib. For a polished solution the exact residual is of the order of
+//! the width of its enclosure ("Width" above) and the bound reflects
+//! `|R| rad([r])`: overestimation from 1 to `7.7 · 10⁴` observed (median
+//! 223 on Netlib) — a limit of Algorithm V, not of E. One solve per row
+//! leaves `α` of the order of `κ(A) u`; the refinement E2 lowers it by
+//! orders of magnitude (`7.5 · 10⁻³ → 3.1 · 10⁻⁶` at `κ = 10¹⁴`, order
+//! 20): measured, it certifies dense matrices up to `κ ≈ 10¹⁶`, where one
+//! solve per row stops near `10¹⁴`.
+//!
+//! **A basis of a linear program.** The right-hand side `b = −K_N β_N` of
+//! a basis is not made of `f64` values. Pass `A = B` and, as `[r]`, the
+//! enclosure of the first `m` rows of the square system of order `n + m`
+//! of `xingo-simplex`'s `residual_certificates` test (`K z = 0`, `z_v =
+//! β_v` for the nonbasic `v`), evaluated with the nonbasic variables set
+//! **exactly** to their bounds: those rows are then `B z_B − b` exactly,
+//! and Theorem E holds for the exact real `b`.
+//!
+//! **Cost.** `n` calls of `solve_transpose` (`2n` with `refine_rows`), plus
+//! `Σ_p Σ_{q∈Q_p} (nnz(a_{:q}) + 1)` pairs of Dot2Err (about 25 flops each;
+//! up to twice as many with refinement) — `n · nnz(A)` at worst — and an
+//! `O(n)` scan per row for `S_p`. Memory `O(n + nnz(A))`: one
+//! compressed-column copy, a few vectors of length `n`, buffers of the
+//! length of the longest column. Measured (X0.3, a loaded machine): 10.8 s
+//! summed over the 93 optimal bases of Netlib with refinement, the largest
+//! (dfl001, `m = 6 071`) 3.7 s; on a sparse synthetic family `n = 10⁴` in
+//! 21 s and `3 · 10⁴` in 271 s — quadratic in `n`, because each solve and
+//! each scan is `O(n)` with dense vectors.
+//!
+//! **What stays out.** Bounds in the 2-norm (by `σ_min`; rejected by the
+//! measurements of X0.3); an explicit `R`; a componentwise criterion with a
+//! vector `v ≠ 𝟙` (Perron, H-matrices: another pass of `n` solves);
+//! Krawczyk iteration; bounds through the LU factors with comparison
+//! matrices (they would need the factors of `xingo-sparse`, which are
+//! opaque); parallel rows; a bound for a subset of the components (`α` is
+//! global); interval `A` or `b`. The transposed system needs no function of
+//! its own: call again with `Aᵀ` and the FTRAN as the solve.
+//!
 //! ## Invariants
 //! (V1) *Residuals.* [`residual`]`(A, x, b)[i] ∋ a_iᵀx − b_i`, and likewise
 //!      [`residual_of_dd`], [`residual_csc`] and [`activity`] (`∋ a_iᵀx`),
@@ -190,6 +361,23 @@
 //!      `debug_assert!`).
 //! (P2) *Untouched on failure.* With [`PolishStop::NotFinite`] and zero
 //!      iterations, `x` is the input.
+//! (E1) *Never false.* [`ForwardErrorOutcome::Certified`] implies Theorem
+//!      E for the stored data, whatever the closure (a wrong one can only
+//!      prevent the certificate). Checked against exact rationals, with
+//!      adversarial closures.
+//! (E2) *Nonsingular.* Certified implies `A` nonsingular; an exactly
+//!      singular `A` is never certified (checked).
+//! (E3) *Shape.* Certified ⇔ `ε` finite ⇔ every `ε_p` finite; then `0 ≤
+//!      ε_p ≤ ε` and `0 ≤ α < 1`. Not certified ⇒ `ε = +∞` and every `ε_p =
+//!      +∞` (a `debug_assert!`).
+//! (E4) *Deterministic.* The same bits for the same data and the same
+//!      closure (K1, D5), if the closure is a function of its argument.
+//!      The BTRAN of `xingo_sparse::Lu` is not, by design: it chooses
+//!      between its hypersparse and its dense path by a moving average of
+//!      the density of the previous results, so two equal calls can sum in
+//!      different orders (on one Netlib basis, share1b, they returned other
+//!      bits); the same sequence of calls gives the same bits. Each result
+//!      is a theorem for its own `R` either way.
 //!
 //! ## References
 //! Ogita, Rump & Oishi, "Accurate sum and dot product", SIAM J. Sci.
@@ -200,10 +388,18 @@
 //! statement above is the qualitative one and nothing in the code depends
 //! on its constants; Rump, "Verification methods: rigorous results using
 //! floating-point arithmetic", Acta Numerica 19 (2010) — the distinction
-//! between a verified residual and a verified solution (*not reread*; no
-//! bound of this chapter is taken from it).
+//! between a verified residual and a verified solution, and (§10) the bound
+//! `‖I − RA‖ ≤ α < 1 ⇒ ‖x̃ − x*‖ ≤ ‖R(A x̃ − b)‖/(1 − α)` for an
+//! approximate inverse `R` that Algorithm E applies one implicit row at a
+//! time (*cited from memory, not reread*; the constants and the proof of
+//! Theorem E are this chapter's, from (K2), (V1) and (I1)–(I3) only).
+//! Before release the proof and the code of Algorithm E were reviewed by an
+//! independent reviewer (task X0.3, 262 000 adversarial cases of order at
+//! most 8 checked in exact arithmetic): no false bound; the review found
+//! the corner of (K2) fixed in Chapter 11.5 and the textual corrections of
+//! steps E2 and (o) above.
 
-use xingo_sparse::{CscMatrix, CsrMatrix, Row};
+use xingo_sparse::{Col, CscMatrix, CsrMatrix, Row};
 
 use crate::dd::DoubleDouble;
 use crate::interval::Interval;
@@ -216,7 +412,8 @@ use crate::kernels;
 pub enum VerifyError {
     /// `x` or `b` has the wrong length for `A` (for [`polish`], also: `A`
     /// is not square — `expected` is its number of rows, `got` its number
-    /// of columns).
+    /// of columns; for [`forward_error_bound`], also: `A` not square or `r`
+    /// of the wrong length).
     Dimension {
         /// What was expected.
         expected: usize,
@@ -600,6 +797,340 @@ pub fn polish(
         iterations,
         residual_before: nu_first,
         residual_after: nu,
+    })
+}
+
+/// The parameters of Algorithm E.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ForwardErrorOptions {
+    /// Refine each row of the implicit inverse once in double-double
+    /// (step E2): up to twice the solves (default `true`). Measured on dense
+    /// matrices, it certified up to `κ(A) ≈ 1e16` where one solve per row
+    /// stopped near `1e14` — a measurement, not a guarantee: whether a
+    /// matrix is certified depends on the solve and the data, not on `κ`
+    /// alone.
+    pub refine_rows: bool,
+}
+
+impl Default for ForwardErrorOptions {
+    fn default() -> Self {
+        Self { refine_rows: true }
+    }
+}
+
+/// Why Algorithm E stopped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ForwardErrorOutcome {
+    /// The bounds are a theorem (Chapter 11.10, Theorem E).
+    Certified,
+    /// `‖I − RA‖∞ < 1` could not be shown: `A` singular or too
+    /// ill-conditioned for the solve, or the solve is not one of `Aᵀ`.
+    NotContracting,
+    /// A solve, the residual enclosure or the bound was not finite.
+    NotFinite,
+}
+
+/// The outcome of Algorithm E.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct ForwardErrorBound {
+    /// Why it stopped.
+    pub outcome: ForwardErrorOutcome,
+    /// `ε ≥ ‖x − x*‖∞` (`+∞` unless certified).
+    pub norm_inf: f64,
+    /// `ε_p ≥ |x_p − x*_p|`, `0 ≤ ε_p ≤ ε` (all `+∞` unless certified).
+    pub componentwise: Vec<f64>,
+    /// `α ≥ ‖I − RA‖∞` over the rows examined: `< 1` when certified;
+    /// `≥ 1` when [`ForwardErrorOutcome::NotContracting`]; with
+    /// [`ForwardErrorOutcome::NotFinite`], the value reached when it
+    /// stopped (`0` if no row was examined).
+    pub contraction: f64,
+    /// Calls of `solve_transpose`.
+    pub solves: usize,
+}
+
+impl ForwardErrorBound {
+    /// The outcome is [`ForwardErrorOutcome::Certified`].
+    pub fn is_certified(&self) -> bool {
+        self.outcome == ForwardErrorOutcome::Certified
+    }
+
+    /// No certificate: every bound `+∞` (invariant E3).
+    fn refused(outcome: ForwardErrorOutcome, n: usize, contraction: f64, solves: usize) -> Self {
+        Self {
+            outcome,
+            norm_inf: f64::INFINITY,
+            componentwise: vec![f64::INFINITY; n],
+            contraction,
+            solves,
+        }
+    }
+
+    /// Invariant E3.
+    fn check_invariants(&self) -> Result<(), &'static str> {
+        let finite = self.norm_inf.is_finite();
+        if self.is_certified() {
+            if !(finite && self.norm_inf >= 0.0) {
+                return Err("E3: a certificate with an infinite or negative ε");
+            }
+            if !(0.0..1.0).contains(&self.contraction) {
+                return Err("E3: a certificate with α outside [0, 1)");
+            }
+            if !self
+                .componentwise
+                .iter()
+                .all(|&c| c >= 0.0 && c <= self.norm_inf)
+            {
+                return Err("E3: some ε_p outside [0, ε]");
+            }
+        } else if finite || self.componentwise.iter().any(|c| c.is_finite()) {
+            return Err("E3: a finite bound without a certificate");
+        }
+        Ok(())
+    }
+}
+
+/// An upper bound as computed, with a NaN read as `+∞`: it proves nothing
+/// (invariant C3 of Chapter 11), and `f64::max` and `f64::min` would drop
+/// it.
+fn upper(x: f64) -> f64 {
+    if x.is_nan() { f64::INFINITY } else { x }
+}
+
+/// `δ_pq`.
+fn kronecker(p: usize, q: usize) -> f64 {
+    if p == q { 1.0 } else { 0.0 }
+}
+
+/// Step E3, the sets: `support ← S_p` (the `i` with `h_i ≠ 0` or `ℓ_i ≠
+/// 0`) and `cols ← Q_p` (the columns stored in the rows of `S_p`, and
+/// `p`), each without repetition; `mark` is all `false` on entry and on
+/// exit.
+fn row_sets(
+    a: &CsrMatrix<f64>,
+    p: usize,
+    (h, l): (&[f64], &[f64]),
+    mark: &mut [bool],
+    support: &mut Vec<usize>,
+    cols: &mut Vec<usize>,
+) {
+    support.clear();
+    cols.clear();
+    for (i, (&hi, &li)) in h.iter().zip(l).enumerate() {
+        if hi != 0.0 || li != 0.0 {
+            support.push(i);
+            for &q in a.row(Row::from_usize(i)).0 {
+                let q = q as usize;
+                if !mark[q] {
+                    mark[q] = true;
+                    cols.push(q);
+                }
+            }
+        }
+    }
+    if !mark[p] {
+        mark[p] = true;
+        cols.push(p);
+    }
+    for &q in cols.iter() {
+        mark[q] = false;
+    }
+}
+
+/// Algorithm E: from `r ∋ A x − b` (from [`residual`] or
+/// [`residual_of_dd`]) and a transposed solve (`c ← ≈ A⁻ᵀ c`, `f64`),
+/// proves that `A` is nonsingular and bounds `x − A⁻¹b` (Theorem E of
+/// Chapter 11.10): if the result is certified, then for the `b` whose
+/// residual `r` encloses — precisely, for every `x` and `b` with `A x − b ∈
+/// r` componentwise — `‖x − A⁻¹b‖∞ ≤ norm_inf` and `|x_p − (A⁻¹b)_p| ≤
+/// componentwise[p]`, for the stored `f64` values of `A`.
+///
+/// The bound is a theorem **whatever** `solve_transpose` returns: a wrong
+/// solve can only prevent the certificate or loosen the bound. It is called
+/// at most `n` times (at most `2n` with
+/// [`ForwardErrorOptions::refine_rows`]; fewer when it stops early), each
+/// time on a vector of length `n`.
+///
+/// ```
+/// use xingo_extprec::verify::{
+///     ForwardErrorOptions, forward_error_bound, residual,
+/// };
+/// use xingo_sparse::CsrMatrix;
+///
+/// // [[2, 1], [1, 3]] x = (1, 1): x* = (2/5, 1/5), not representable.
+/// let a = CsrMatrix::from_raw_parts(2, vec![0, 2, 4], vec![0, 1, 0, 1],
+///     vec![2.0, 1.0, 1.0, 3.0]).unwrap();
+/// let (b, x) = ([1.0, 1.0], [0.4, 0.2]);
+/// // Aᵀ = A: the transposed solve is the exact inverse, rounded.
+/// let mut solve_t = |c: &mut [f64]| {
+///     let (p, q) = (c[0], c[1]);
+///     c[0] = (3.0 * p - q) / 5.0;
+///     c[1] = (2.0 * q - p) / 5.0;
+/// };
+/// let r = residual(&a, &x, &b).unwrap();
+/// let e = forward_error_bound(&a, &r, &mut solve_t, &ForwardErrorOptions::default())
+///     .unwrap();
+/// assert!(e.is_certified() && e.contraction < 1e-15);
+/// // |0.4 − 2/5| and |0.2 − 1/5| are below 2⁻⁵⁴ and 2⁻⁵⁵.
+/// assert!(e.norm_inf < 1e-16 && e.componentwise[1] < 1e-16);
+/// ```
+///
+/// # Errors
+/// [`VerifyError::Dimension`] if `a` is not square or `r` does not have
+/// one entry per row.
+///
+/// # Panics
+/// If `a` violates the invariants of its type.
+pub fn forward_error_bound(
+    a: &CsrMatrix<f64>,
+    r: &[Interval],
+    solve_transpose: &mut dyn FnMut(&mut [f64]),
+    opts: &ForwardErrorOptions,
+) -> Result<ForwardErrorBound, VerifyError> {
+    use ForwardErrorOutcome::{Certified, NotContracting, NotFinite};
+    // E0.
+    dimension(a.n_rows(), a.n_cols())?;
+    let n = a.n_rows();
+    dimension(n, r.len())?;
+    if r.iter().any(|x| x.is_empty()) {
+        return Ok(ForwardErrorBound::refused(NotFinite, n, 0.0, 0));
+    }
+    let bound =
+        forward_error_rows(a, r, solve_transpose, opts.refine_rows).unwrap_or_else(|refusal| {
+            let (outcome, alpha, solves) = refusal;
+            ForwardErrorBound::refused(outcome, n, alpha, solves)
+        });
+    debug_assert!(
+        bound.check_invariants().is_ok(),
+        "{:?}: {bound:?}",
+        bound.check_invariants()
+    );
+    debug_assert!(n > 0 || bound.outcome == Certified);
+    debug_assert!(bound.outcome != NotContracting || bound.contraction >= 1.0);
+    Ok(bound)
+}
+
+/// Steps E1–E7 for a square `a` and a nonempty `[r]` of the right length;
+/// `Err((outcome, α, solves))` when there is no certificate.
+// Every upper bound goes through `upper`, so a NaN — none arises today:
+// the operations of `Interval` on non-empty operands return none — would
+// count as `+∞` and refuse; `!(α < 1)` refuses one too.
+#[allow(clippy::neg_cmp_op_on_partial_ord)]
+fn forward_error_rows(
+    a: &CsrMatrix<f64>,
+    r: &[Interval],
+    solve_transpose: &mut dyn FnMut(&mut [f64]),
+    refine_rows: bool,
+) -> Result<ForwardErrorBound, (ForwardErrorOutcome, f64, usize)> {
+    use ForwardErrorOutcome::{Certified, NotContracting, NotFinite};
+    let n = a.n_rows();
+    let csc = a.to_csc();
+    // `y = h + ℓ`, the row of `R`; `d` the correction of step E2.
+    let (mut h, mut l, mut d) = (vec![0.0; n], vec![0.0; n], vec![0.0; n]);
+    let mut mark = vec![false; n];
+    let (mut support, mut cols) = (Vec::new(), Vec::new());
+    let (mut pp, mut qq) = (Vec::new(), Vec::new());
+    let (mut rho, mut g) = (vec![0.0; n], vec![0.0; n]);
+    let mut alpha = 0.0_f64;
+    let mut solves = 0_usize;
+    for p in 0..n {
+        // E1.
+        h.fill(0.0);
+        l.fill(0.0);
+        h[p] = 1.0;
+        solve_transpose(&mut h);
+        solves += 1;
+        if !h.iter().all(|v| v.is_finite()) {
+            return Err((NotFinite, alpha, solves));
+        }
+        // E2: only chooses `R`; nothing here enters the proof. `refined`:
+        // the trailing components `ℓ` were set (otherwise all zero).
+        let mut refined = false;
+        if refine_rows {
+            row_sets(a, p, (&h, &l), &mut mark, &mut support, &mut cols);
+            d.fill(0.0);
+            for &q in &cols {
+                let (rows, vals) = csc.col(Col::from_usize(q));
+                qq.clear();
+                qq.extend(rows.iter().map(|&i| h[i as usize]));
+                d[q] = (DoubleDouble::from_f64(kronecker(p, q)) - kernels::dot2(vals, &qq)).hi();
+            }
+            solve_transpose(&mut d);
+            solves += 1;
+            // (Q2 of X0.3i: also discard a correction whose sum overflows.)
+            if d.iter()
+                .zip(&h)
+                .all(|(&di, &hi)| di.is_finite() && (hi + di).is_finite())
+            {
+                refined = true;
+                for ((hi, li), &di) in h.iter_mut().zip(l.iter_mut()).zip(&d) {
+                    let s = DoubleDouble::from_f64(*hi) + di;
+                    (*hi, *li) = (s.hi(), s.lo());
+                }
+            }
+        }
+        // Proof of Theorem E, (o): `R` is real.
+        debug_assert!(
+            h.iter().chain(&l).all(|v| v.is_finite()),
+            "(o): a non-finite component in row {p} of R"
+        );
+        // E3.
+        row_sets(a, p, (&h, &l), &mut mark, &mut support, &mut cols);
+        let mut sum = Interval::ZERO;
+        for &q in &cols {
+            let (rows, vals) = csc.col(Col::from_usize(q));
+            pp.clear();
+            qq.clear();
+            pp.extend_from_slice(vals);
+            qq.extend(rows.iter().map(|&i| h[i as usize]));
+            if refined {
+                pp.extend_from_slice(vals);
+                qq.extend(rows.iter().map(|&i| l[i as usize]));
+            }
+            pp.push(-1.0);
+            qq.push(kronecker(p, q));
+            let (s, beta) = kernels::dot2_err(&pp, &qq);
+            sum += enclosure(s, beta).mag();
+        }
+        rho[p] = upper(sum.sup());
+        // E4.
+        let mut acc = Interval::ZERO;
+        for &i in &support {
+            for y in [h[i], l[i]] {
+                if y != 0.0 {
+                    acc += r[i] * y;
+                }
+            }
+        }
+        g[p] = upper(acc.mag());
+        // E5.
+        alpha = alpha.max(rho[p]);
+        if !(alpha < 1.0) {
+            return Err((NotContracting, alpha, solves));
+        }
+    }
+    // E6.
+    let gamma = g.iter().fold(0.0_f64, |m, &v| m.max(v));
+    if !gamma.is_finite() {
+        return Err((NotFinite, alpha, solves));
+    }
+    let eps = upper((Interval::point(gamma) / (1.0 - Interval::point(alpha))).sup());
+    if !eps.is_finite() {
+        return Err((NotFinite, alpha, solves));
+    }
+    // E7.
+    let componentwise = g
+        .iter()
+        .zip(&rho)
+        .map(|(&gp, &rp)| upper((Interval::point(gp) + Interval::point(rp) * eps).sup()).min(eps))
+        .collect();
+    Ok(ForwardErrorBound {
+        outcome: Certified,
+        norm_inf: eps,
+        componentwise,
+        contraction: alpha,
+        solves,
     })
 }
 

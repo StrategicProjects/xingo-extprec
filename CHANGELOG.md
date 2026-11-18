@@ -39,7 +39,10 @@ optionally, `xingo-sparse` 0.4.
   function of `std` is called (their precision is unspecified): table
   seeds, Payne–Hanek reduction in integer arithmetic for every `|x| > π/4`.
 * `kernels`: `sum2`, `dot2` and `dot2_err` (compensated, Ogita, Rump &
-  Oishi 2005; `dot2_err` with a rigorous bound on its own error), the
+  Oishi 2005; `dot2_err` with a rigorous bound on its own error, `+∞`
+  also when an intermediate step of its last 2Sum overflows near `Ω` — a
+  corner found by the review of X0.3, where the bound was finite and
+  false), the
   double-double `dot`, `dot_mixed`, `axpy` and `gemm_sub`, over four
   accumulators in a fixed order (Chapter 11.5); `kernels::backend()`.
 * Feature `simd` (default): the same kernels on vector registers through
@@ -59,10 +62,21 @@ optionally, `xingo-sparse` 0.4.
   `verify` — `residual`, `residual_csc`, `residual_of_dd`, `residual_dd`,
   `activity`, `norm_inf_bound` and `polish` with `PolishOptions`,
   `PolishReport`, `PolishStop` and `VerifyError` (Chapter 11.10).
-* `ErrorBound`, `FunctionBound`, `PolishReport`, `PolishStop` and
-  `VerifyError` are `#[non_exhaustive]`, so that fields and variants can be
-  added in a minor version; `PolishOptions` is not (it is built with
-  `..PolishOptions::default()`).
+* `verify::forward_error_bound` (Algorithm E, Theorem E of Chapter 11.10):
+  from the enclosure of the residual of an approximate solution (`f64` or
+  double-double) and the caller's transposed solve, a proof that a square
+  `A` is nonsingular and a rigorous bound of `‖x − A⁻¹b‖∞` and of each
+  component of the error, by an approximate inverse applied one implicit
+  row at a time, each row refined once in double-double by default;
+  `ForwardErrorOptions` (`refine_rows`), `ForwardErrorBound`,
+  `ForwardErrorOutcome` (`Certified`, `NotContracting`, `NotFinite`). The
+  bound holds whatever the solve returns; without a certificate the bounds
+  are `+∞` (`Ok`, not an error).
+* `ErrorBound`, `FunctionBound`, `PolishReport`, `PolishStop`,
+  `ForwardErrorBound`, `ForwardErrorOutcome` and `VerifyError` are
+  `#[non_exhaustive]`, so that fields and variants can be added in a minor
+  version; `PolishOptions` and `ForwardErrorOptions` are not (they are
+  built with `..Default::default()`).
 * The documentation, on docs.rs too, includes the private items: most
   chapters of the book, the proofs of the bounds among them, document
   private modules.
@@ -83,7 +97,13 @@ on aarch64 (NEON), x86_64 (scalar and AVX2 + FMA) and i686, on Linux,
 macOS and Windows, not elsewhere; the
 subnormal regime of the elementary functions is tested for all 23 (subnormal
 arguments and trailing components, underflowing results), not exhausted;
-`verify` bounds residuals, not `‖x − x*‖`.
+`forward_error_bound` bounds the error of one solution of a square system
+with point data (no solution sets of interval systems, no 2-norm bounds),
+costs at most `n` (`2n` with refinement) transposed solves and is
+quadratic in `n`, the condition numbers it certified are measurements, not
+a guarantee, and its proof is the chapter's own (reviewed before release by
+an independent reviewer with 262 000 adversarial cases checked in exact
+arithmetic, no false bound found).
 
 <!-- TODO(owner): replace "Unreleased" in the 0.1.0 heading with the date of publication, and add the link line below. -->
 <!-- [0.1.0]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.0 -->

@@ -148,7 +148,10 @@
 //!
 //! The additions never leave the model of the proofs when subnormal
 //! numbers occur (invariant T1): their bounds hold on the whole finite
-//! range short of overflow. Outside the safe range the other operations
+//! range short of overflow, where an operand of magnitude `Ω` counts as
+//! overflow: an intermediate step of its 2Sum can overflow and step E then
+//! returns the rounded `f64` sum (measured: relative error `2⁵² u²`).
+//! Outside the safe range the other operations
 //! lose the bound — a `2Prod` that underflows contributes an absolute error
 //! of order `η` — but keep the invariants below.
 //!

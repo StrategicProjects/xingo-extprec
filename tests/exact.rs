@@ -1001,3 +1001,166 @@ fn survey_of_observed_errors() {
         );
     }
 }
+
+// ---------------------------------------------------------------------
+// Near Ω: the overflow of an intermediate step of a 2Sum (review X0.3i)
+// ---------------------------------------------------------------------
+
+/// Values whose partial sums touch `±Ω` and come back: `Ω` minus a few
+/// units of its last place, `2⁹⁷⁰` (half that unit) plus or minus a few
+/// units 52 places lower, other large and ordinary magnitudes, zeros.
+fn near_omega() -> impl Strategy<Value = f64> {
+    let top = (0_u32..8, any::<bool>()).prop_map(|(k, neg)| {
+        let v = f64::from_bits(f64::MAX.to_bits() - u64::from(k));
+        if neg { -v } else { v }
+    });
+    let half = (0_i32..5, any::<bool>(), any::<bool>()).prop_map(|(j, down, neg)| {
+        let base = 2f64.powi(970);
+        let v = if down {
+            base - f64::from(j) * 2f64.powi(918)
+        } else {
+            base + f64::from(j) * 2f64.powi(918)
+        };
+        if neg { -v } else { v }
+    });
+    prop_oneof![
+        3 => top,
+        3 => half,
+        2 => normal(900, 1023),
+        1 => normal(-10, 10),
+        1 => Just(0.0),
+    ]
+}
+
+fn unit_factor() -> impl Strategy<Value = f64> {
+    prop_oneof![
+        4 => Just(1.0),
+        1 => Just(-1.0),
+        1 => Just(0.5),
+        1 => Just(2.0),
+        1 => normal(-2, 2),
+    ]
+}
+
+/// `|xᵀy − r| ≤ β` exactly, or `β = +∞`; `None` when it fails.
+fn k2_holds(x: &[f64], y: &[f64]) -> Option<(Dd, f64)> {
+    let (r, beta) = kernels::dot2_err(x, y);
+    if beta.is_nan() || beta < 0.0 {
+        return None;
+    }
+    if beta.is_finite() {
+        if !r.is_finite() {
+            return None;
+        }
+        let exact = x
+            .iter()
+            .zip(y)
+            .fold(zero(), |acc, (&a, &b)| acc + q(a) * q(b));
+        if abs(qd_or_zero(r) - exact) > q(beta) {
+            return None;
+        }
+    }
+    Some((r, beta))
+}
+
+/// The minimal case of the review, through the public function.
+#[test]
+fn dot2_err_minimal_case_of_the_review() {
+    let lane0 = [
+        0x7fef_ffff_ffff_fffe_u64,
+        0x7c90_0000_0000_0001,
+        0xfc8f_ffff_ffff_fffe,
+        0xfc8f_ffff_ffff_fffc,
+        0xf970_0000_0000_0000,
+    ];
+    let mut x = [0.0; 17];
+    for (k, &bits) in lane0.iter().enumerate() {
+        x[4 * k] = f64::from_bits(bits);
+    }
+    let (r, beta) = k2_holds(&x, &[1.0; 17]).expect("K2");
+    assert_eq!(
+        (r.hi(), r.lo(), beta),
+        (f64::from_bits(lane0[0]), 0.0, f64::INFINITY)
+    );
+}
+
+/// A directed search: the corner (a finite `r` with `β = +∞`) is reached
+/// many times, and (K2) holds on every case, in every lane and length.
+#[test]
+fn dot2_err_directed_search_near_omega() {
+    let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    let ulps = |k: u64| f64::from_bits(f64::MAX.to_bits() - k);
+    let (mut corner, mut finite) = (0, 0);
+    for case in 0..20_000_u64 {
+        let n = 1 + usize::try_from(next() % 64).expect("small");
+        let lane = usize::try_from(case % 4).expect("small");
+        let mut x = vec![0.0; n.max(lane + 1)];
+        // One lane carries a partial sum at ±Ω and terms that bring it back.
+        let sign = if next() & 1 == 0 { 1.0 } else { -1.0 };
+        x[lane] = sign * ulps(next() % 4);
+        let mut i = lane + 4;
+        while i < x.len() {
+            let j = f64::from(u8::try_from(next() % 4).expect("small"));
+            let t = match next() % 4 {
+                0 => 2f64.powi(970) + j * 2f64.powi(918),
+                1 => 2f64.powi(970) - j * 2f64.powi(918),
+                2 => 2f64.powi(920) * (1.0 + j),
+                _ => 0.0,
+            };
+            x[i] = if next() & 1 == 0 { -sign * t } else { sign * t };
+            i += 4;
+        }
+        let y = vec![1.0; x.len()];
+        let (r, beta) = k2_holds(&x, &y).unwrap_or_else(|| panic!("K2 fails: {x:?}"));
+        if r.is_finite() {
+            if beta.is_finite() {
+                finite += 1;
+            } else {
+                corner += 1;
+            }
+        }
+    }
+    // 14 corners and 16 518 finite bounds with this seed.
+    assert!(
+        corner >= 10 && finite > 1000,
+        "corner {corner}, finite {finite}"
+    );
+}
+
+proptest! {
+    #![proptest_config(config(3_000))]
+
+    /// (K2) on data near `Ω`, lengths 1 to 64 (every lane).
+    #[test]
+    fn dot2_err_is_rigorous_near_omega(
+        (x, y) in (1_usize..=64).prop_flat_map(|n| (
+            prop::collection::vec(near_omega(), n),
+            prop::collection::vec(unit_factor(), n),
+        )),
+    ) {
+        prop_assert!(k2_holds(&x, &y).is_some(), "{x:?} · {y:?}");
+        // `dot2` returns the `r` of `dot2_err` (step C4 is shared).
+        let (a, b) = (kernels::dot2(&x, &y), kernels::dot2_err(&x, &y).0);
+        prop_assert!(a == b || (a.is_nan() && b.is_nan()), "{a:?} {b:?}");
+    }
+
+    /// The directed additions of `Interval` near `Ω` (Fast2Sum on the
+    /// ordered operands: no intermediate overflows).
+    #[test]
+    fn interval_sums_near_omega(a in near_omega(), b in near_omega()) {
+        let s = xingo_extprec::Interval::point(a) + b;
+        let exact = q(a) + q(b);
+        prop_assert!(s.inf() == f64::NEG_INFINITY || q(s.inf()) <= exact);
+        prop_assert!(s.sup() == f64::INFINITY || q(s.sup()) >= exact);
+        let d = xingo_extprec::Interval::point(a) - xingo_extprec::Interval::point(b);
+        let exact = q(a) - q(b);
+        prop_assert!(d.inf() == f64::NEG_INFINITY || q(d.inf()) <= exact);
+        prop_assert!(d.sup() == f64::INFINITY || q(d.sup()) >= exact);
+    }
+}
