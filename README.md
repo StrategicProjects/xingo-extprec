@@ -238,7 +238,7 @@ worst error was 30 % of its declared bound.
 ## Features
 
 * `sparse` (default) — brings in [`xingo-sparse`](https://crates.io/crates/xingo-sparse)
-  0.4 (pure Rust, no dependency of its own with `default-features = false`,
+  0.4 or 0.5 (pure Rust, no dependency of its own with `default-features = false`,
   which is how this crate asks for it): `impl xingo_sparse::Real for
   DoubleDouble`, the dense kernel `DdDense` and the module `verify`.
 * `simd` (default) — the kernels on vector registers through

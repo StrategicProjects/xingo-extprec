@@ -5,7 +5,7 @@ All notable changes to `xingo-extprec` are recorded here. The format follows
 follows [Semantic Versioning](https://semver.org/); before 1.0, a minor
 version may change the public API.
 
-## [Unreleased]
+## [0.1.2] — 2026-11-19
 
 ### Changed
 
@@ -28,6 +28,9 @@ version may change the public API.
   Lemma D. For those targets the dev-dependency `proptest` drops its
   features `fork` and `timeout` (unused), and the generic SIMD kernels,
   which no backend calls there, are allowed to be dead code.
+* The optional dependency accepts `xingo-sparse` 0.4 or 0.5 (`>=0.4.0,
+  <0.6.0`): 0.5 changes nothing this crate uses, and the suite passes
+  against both.
 
 ## [0.1.1] — 2026-11-18
 
@@ -140,5 +143,6 @@ a guarantee, and its proof is the chapter's own (reviewed before release by
 an independent reviewer with 262 000 adversarial cases checked in exact
 arithmetic, no false bound found).
 
+[0.1.2]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.2
 [0.1.1]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.1
 [0.1.0]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.0
