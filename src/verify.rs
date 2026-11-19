@@ -583,7 +583,8 @@ const FLOOR: f64 = 6.0 * f64::MIN_POSITIVE * (1.0 + 4.0 * f64::EPSILON);
 /// keeps the enclosure of V3. `w` is a buffer.
 fn distilled(p: &[f64], q: &[f64], w: &mut Vec<f64>) -> Option<Interval> {
     /// `2(m u) < 1` iff `m < 2⁵²`.
-    const MAX_TERMS: usize = 1 << 52;
+    // `u64`, not `usize`: `2⁵²` does not fit a 32-bit `usize` (i686, wasm32).
+    const MAX_TERMS: u64 = 1 << 52;
     // V4.
     w.clear();
     for (&pj, &qj) in p.iter().zip(q) {
@@ -604,7 +605,7 @@ fn distilled(p: &[f64], q: &[f64], w: &mut Vec<f64>) -> Option<Interval> {
         a += v.abs();
     }
     let m = w.len().max(1) - 1;
-    if m >= MAX_TERMS || !(t.is_finite() && a.is_finite()) {
+    if u64::try_from(m).map_or(true, |m| m >= MAX_TERMS) || !(t.is_finite() && a.is_finite()) {
         return None;
     }
     #[allow(clippy::cast_precision_loss)] // exact: m < 2⁵²
