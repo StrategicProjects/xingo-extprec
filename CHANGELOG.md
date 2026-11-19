@@ -5,7 +5,7 @@ All notable changes to `xingo-extprec` are recorded here. The format follows
 follows [Semantic Versioning](https://semver.org/); before 1.0, a minor
 version may change the public API.
 
-## [Unreleased]
+## [0.1.3] — 2026-11-19
 
 ### Changed
 
@@ -175,6 +175,7 @@ a guarantee, and its proof is the chapter's own (reviewed before release by
 an independent reviewer with 262 000 adversarial cases checked in exact
 arithmetic, no false bound found).
 
+[0.1.3]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.3
 [0.1.2]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.2
 [0.1.1]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.1
 [0.1.0]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.0
