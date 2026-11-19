@@ -372,7 +372,78 @@
 //! R 2⁻³⁸²`, so the one rounding, of `t + v₂`, is at most `u²(1 + 2⁻⁵¹)` of
 //! the value; `from_sum` is exact. ∎ When `R ≥ 1`, `|r| ≥ 2⁻³⁸²` (the
 //! chunks are exact multiples of `2⁻³⁸²`); `R = 0`, possible only if `|r*|
-//! < 2⁻³¹⁵`, gives `r = 0`.
+//! < 2⁻³¹⁵`, gives `r = 0` — and Lemma D below shows that it never happens.
+//!
+//! **Lemma D (no double-double is near a multiple of `π/2`).** For every
+//! double-double `x` with `x_h > RN(π/4)` and every integer `k`, `|x − kπ/2|
+//! > 2⁻¹⁴⁰`. So `|r*| > 2⁻¹⁴⁰` in Theorem R, `R ≥ 1`, and `|r| > 2⁻¹⁴¹`.
+//! The closest double-double found (below) has `|r*| ≈ 2⁻¹²⁴`.
+//!
+//! *Notation.* `‖y‖` is the distance from `y` to the nearest integer, so
+//! `min_k |x − kπ/2| = (π/2)‖x · 2/π‖` and it suffices that `‖x · 2/π‖ ≥
+//! 2⁻¹⁴⁰` (`π/2 > 1`). `x_h = M 2ᴱ` with `2⁵² ≤ M < 2⁵³` and `−53 ≤ E ≤ 971`
+//! (`x_h > 0.78`); `x_ℓ = 0` or `x_ℓ = m 2ᵉ` with `|m| < 2⁵³` and `e = −1074`
+//! or `2⁵² ≤ |m|`; normalization (`|x_ℓ| ≤ 2^(E−1)`) gives `e ≤ E − 53`.
+//! `α_j = 2ʲ · 2/π mod 1`. The method is the classical one for `f64`
+//! (Muller, Chapter 11): continued
+//! fractions bound `‖qα‖` for all `q` below a bound at once. A
+//! double-double is two such numbers at independent exponents, so where the
+//! gap between them is wide a lattice replaces the continued fraction.
+//!
+//! D1. [Continued fractions.] For a rational `β` with convergents `p_i/q_i`
+//!     and a bound `Q`, let `q_n < Q ≤ q_(n+1)`; then `‖qβ‖ ≥ |q_n β − p_n|`
+//!     for every `0 < q < Q` (Lagrange: a convergent is a best
+//!     approximation of the second kind; Khinchin, *Continued Fractions*,
+//!     chapter II). If `|α − β| ≤ ϑ`, `‖qα‖ ≥ |q_n β − p_n| −
+//!     Qϑ`.
+//! D2. [The leading component.] D1 with `β = β_E`, a rational within
+//!     `2^(E−1700)` of `α_E`, and `Q = 2⁵³` gives `d_E ≤ ‖Mα_E‖` for every
+//!     `0 < M < 2⁵³`. This settles `x_ℓ = 0`; the smallest is `d_797 =
+//!     2⁻⁶¹·⁵⁴`, at `6 381 956 970 095 103 · 2⁷⁹⁷`, the `f64` nearest a
+//!     multiple of `π/2` (the worst case of `f64` listed by Muller).
+//! D3. [A small trailing component.] If `2^(e+53) · 2/π ≤ d_E/2`: `‖x ·
+//!     2/π‖ ≥ ‖x_h · 2/π‖ − |x_ℓ| 2/π ≥ d_E/2`.
+//! D4. [A narrow gap: one integer.] Else, if `s = E − e ≤ 60`: `x = N 2ᵉ`
+//!     with `0 < N = M 2ˢ + m < 2^(54+s)`, and `‖x · 2/π‖ = ‖Nα_e‖` is
+//!     bounded by D1 with `β = β_e` and `Q = 2^(54+s)`.
+//! D5. [A wide gap: a lattice.] Else `‖x · 2/π‖ = ‖Mα_E + mα_e‖`, a linear
+//!     form in two integers below `2⁵³`. With `Z = 2ᶻ`, `A = ⌊Zβ_E⌋`, `B =
+//!     ⌊Zβ_e⌋`, the lattice `Λ` spanned by the rows `(1, 0, A)`, `(0, 1, B)`,
+//!     `(0, 0, Z)` holds `v = (M, m, MA + mB − kZ)`, whose last coordinate is
+//!     `ZL − θ` with `L = Mα_E + mα_e − k` and `|θ| ≤ 2⁵⁴ + 1`. For *any*
+//!     basis of `Λ` with Gram–Schmidt vectors `b_i*`, a nonzero `v` has
+//!     `‖v‖ ≥ μ = min_i ‖b_i*‖` (take the last `i` with a nonzero
+//!     coefficient), so `Z|L| ≥ √(μ² − 2¹⁰⁷) − 2⁵⁴ − 1`. The basis is reduced
+//!     by LLL and then checked exactly: its rows lie in `Λ`, its determinant
+//!     is `±Z`, and `‖b_i*‖² = Δ_i/Δ_(i−1)` with the integer Gram
+//!     determinants `Δ_i`. `z` is the first of `170, 185, 200, 230, 260`
+//!     that gives `2⁻¹⁴⁰`.
+//!
+//! *Proof.* D1 is the classical theorem; D2–D5 cover every `x` (D3 every
+//! `e` below a cut, D4 and D5 the rest up to `E − 53`). The program
+//! `tests/reduction_bound.rs` carries the computation out in integers only
+//! (`dashu-int`, no floating point): `π` by Machin's formula with its
+//! truncation bounded, `⌊2¹⁷⁰⁰ · 2/π⌋` certified, then D2–D5 for all 1 025
+//! exponents `E` and every `e` that D3 does not settle — 527 301 cases (D4
+//! for 8 178 of them, D5 for 519 123), each asserted `≥ 2⁻¹⁴⁰`. The
+//! smallest bound is `2⁻¹²⁹·⁵` (D5 at `E = 671`, `e = 78`), so in fact
+//! `|r*| > 2⁻¹²⁹`. The full run is `#[ignore]`d in the default suite
+//! (about 20 s with `--release`); a sample of 11 exponents runs by
+//! default. ∎
+//!
+//! The lemma is a computer-assisted proof: it rests on that program, on
+//! D1 and on the bound of D5, not on sampling. An independent run with
+//! `fpylll` for the reduction and Python integers for the checks gave the
+//! same `2⁻¹²⁹·⁵`, and so did the independent review of the lemma, with its
+//! own continued fractions and Gram–Schmidt in exact rationals. The
+//! arguments closest to `kπ/2` known are `7 688 177 032 635 270 · 2⁸⁷⁵ −
+//! 8 875 559 650 591 347 · 2⁻⁷⁵` (`|r*| = 2⁻¹²⁴·⁴⁶`, odd `k`; found by that
+//! review, enumerating small combinations of a reduced basis of the lattice
+//! of D5) and, from a search over the convergents of every `α_E`,
+//! `14 461 176.670… + 1.70·10⁻¹⁸` (`2⁻¹¹⁷·⁹⁹`) and `6 381 956 970 095 103 ·
+//! 2⁷⁹⁷ − 4.69 · 10⁻¹⁹` (`2⁻¹¹⁷·⁴⁶`); the tests check the sharper bound of
+//! `tan` there. Neither search is exhaustive: about four bits separate the
+//! closest argument known from the proven floor.
 //!
 //! The contract planned Cody–Waite (`π/2` in five parts) below `2⁵²` and
 //! Payne–Hanek above. Cody–Waite in double-double arithmetic subtracts with
@@ -398,11 +469,12 @@
 //!     `x` (D2).
 //! S4. [Tangent at `r = 0`.] For `tan` only: if `q` is odd and Algorithm R
 //!     returned `r = 0`, take `r ← 2⁻³⁸²`, the smallest nonzero magnitude
-//!     that R5 produces (`sin`, `cos` and `sin_cos` keep `r = 0`). No
-//!     argument is known to reach this step: the smallest `|r*|` found by a
-//!     directed search is about `2⁻¹¹⁸`, and the step is tested through an
-//!     internal hook. It exists because the proof cannot exclude `|r*| <
-//!     2⁻³¹⁵`, where `−cos r/sin r` would otherwise be `±∞`.
+//!     that R5 produces (`sin`, `cos` and `sin_cos` keep `r = 0`). By Lemma
+//!     D no argument reaches this step (`r = 0` needs `|r*| < 2⁻³¹⁵`); it is
+//!     kept as a guard for release builds, so that `tan` stays finite
+//!     should the computation of Lemma D be wrong, and is tested through an
+//!     internal hook. A debug build asserts Lemma D (`|r| > 2⁻¹⁴¹`) in
+//!     Algorithm R, and so panics before reaching the guard.
 //!
 //! Each function calls the same kernels on the same `(q, r)`, so `sin_cos`
 //! gives the bits of `sin` and of `cos`; the kernels are odd and even bit
@@ -432,18 +504,15 @@
 //! `4.71 + 1.12` and `6.06 + 0.8`: `6.9`. For `x_h ≤ RN(π/4)`, `r = x`
 //! exactly (such an `x` may exceed `π/4` by `2.6·10⁻¹⁷`, which changes the
 //! constants above by less than `10⁻¹⁵`). *Tangent:* D2 adds `15` to
-//! `4.71 + 6.06`. For an even `q`, or an odd `q` with `|r*| ≥ 2⁻³⁰⁰`:
+//! `4.71 + 6.06`. For an even `q`, or an odd `q` (where `|r*| > 2⁻¹⁴⁰ ≥
+//! 2⁻³⁰⁰` by Lemma D; for `x_h ≤ RN(π/4)`, `q = 0`):
 //! then `|r − r*| ≤ 2⁻¹⁶|r*|`, so every `ξ` between `r` and `r*` has `1 +
 //! cot²ξ ≤ (1 + 2⁻¹²)(1 + cot²r*)` (likewise for `tan`), and `|tan r −
 //! tan r*| ≤ (1 + tan²ξ)|r − r*|` has the relative part `r/(sin r cos r)
 //! u²(1 + 2⁻¹²) ≤ 1.58u²` (the same for `cot`) and the absolute part
-//! `2⁻³¹⁵(1 + tan²x)`: `27.4`. For an odd `q` with `|r*| < 2⁻³⁰⁰` (not
-//! known to occur), `tan x = −cot r*` has `1 + tan²x > 2⁶⁰⁰`, and the
-//! computed `z = −cos r/sin r` has `|z| ≤ 2³⁸²(1 + 2⁻⁵⁰)` because `|r| ≥
-//! 2⁻³⁸²` (R5, or step S4): `|z − tan x| ≤ |z| + |cot r*| ≤ 2⁻²⁰⁰(1 +
-//! tan²x)`, the absolute term of the *declared* bound, which therefore
-//! holds for every finite `x`; the proven `27.4u²|tan x| + 2⁻³¹⁵(1 +
-//! tan²x)` is shown only outside this case. ∎
+//! `2⁻³¹⁵(1 + tan²x)`: `27.4`. This covers every finite `x`. (Before Lemma
+//! D, an odd `q` with `|r*| < 2⁻³⁰⁰` was left with the declared bound only;
+//! the case does not exist.) ∎
 //!
 //! ## Algorithm T (`atan`)
 //! Input `a ∈ dd`, `0 ≤ a < ∞` (`atan` is odd: the sign is applied last;
@@ -696,7 +765,7 @@
 //! | `powi` | `15 + 4\|n\|` | `11 + 4\|n\|` | Algorithm P |
 //! | `powf` | `16 + 11\|y ln x\|` | `4.6 + 10.7\|y ln x\|` | `exp(y ln x)` (Theorem F) |
 //! | `sin`, `cos`, `sin_cos` | `8\|f\| + 2⁻²⁰⁰` | `6.9\|f\| + 2⁻³¹⁵` | Algorithms R and K |
-//! | `tan` | `32\|tan\| + 2⁻²⁰⁰(1 + tan²)` | `27.4\|tan\| + 2⁻³¹⁵(1 + tan²)` (odd quadrant with `\|r*\| < 2⁻³⁰⁰`, never observed: the declared bound) | Algorithms R and K, D2 |
+//! | `tan` | `32\|tan\| + 2⁻²⁰⁰(1 + tan²)` | `27.4\|tan\| + 2⁻³¹⁵(1 + tan²)` | Algorithms R and K, D2; Lemma D |
 //! | `atan` | `8` | `5.8` | Algorithm T |
 //! | `atan2`, `asin`, `acos` | `32` | `20`, `26.1`, `26.1` | Algorithm T, composition |
 //! | `sinh`, `cosh`, `tanh` | `32` | `18.7`, `15.1`, `26.4` | Algorithms E and M, composition |
@@ -717,6 +786,15 @@
 //! exponential function in IEEE floating-point arithmetic", ACM TOMS 15
 //! (1989) — from memory. Payne & Hanek, "Radian reduction for
 //! trigonometric functions", SIGNUM Newsletter 18 (1983) — from memory.
+//! For Lemma D: Muller, *op. cit.*, Chapter 11 (the worst cases of `f64`
+//! for the reduction, by continued fractions, among them
+//! `6 381 956 970 095 103 · 2⁷⁹⁷`) — from memory; Khinchin, *Continued
+//! Fractions* (1964), Theorems 16–17 (best approximations) — from memory;
+//! Lenstra, Lenstra & Lovász, "Factoring polynomials with rational
+//! coefficients", Math. Ann. 261 (1982), and Cohen, *A Course in
+//! Computational Algebraic Number Theory* (1993), Algorithm 2.6.7 (the
+//! integral LLL) — from memory; the lower bound `λ₁ ≥ min ‖b_i*‖` is
+//! proven in D5.
 //! Joldes, Muller & Popescu (2017) and the other sources of Chapter 11.2
 //! for the bounds of the operations. C99 Annex F and IEEE 754-2019 §9.2 for
 //! the special cases (as restated in the documentation of `f64`).
@@ -1440,6 +1518,10 @@ fn chunk53(r: &[u64; 6], t: i32) -> u64 {
     }
 }
 
+/// `2⁻¹⁴¹`: every `|r|` of Algorithm R exceeds it (Lemma D; asserted in
+/// debug builds only, so that no result depends on it).
+const LEMMA_D_FLOOR: f64 = f64::from_bits((1023 - 141) << 52);
+
 /// Algorithm R for a finite `x > π/4`: `(q, r)` with `x ≡ qπ/2 + r`.
 fn reduce(x: DoubleDouble) -> (u32, DoubleDouble) {
     // Steps R1–R2.
@@ -1482,7 +1564,8 @@ fn reduce(x: DoubleDouble) -> (u32, DoubleDouble) {
     let mut prod = [0_u64; 10];
     mul_words(&gg, &p, &mut prod);
     let rw: [u64; 6] = core::array::from_fn(|k| prod[k + 4]);
-    // Step R5.
+    // Step R5. R = 0 needs |r*| < 2⁻³¹⁵, which Lemma D excludes.
+    debug_assert!(rw.iter().any(|&w| w != 0), "Lemma D: R = 0 at {x:?}");
     let Some(top) = (0..6).rev().find(|&k| rw[k] != 0) else {
         return (q, DoubleDouble::ZERO);
     };
@@ -1496,6 +1579,7 @@ fn reduce(x: DoubleDouble) -> (u32, DoubleDouble) {
     };
     let (s, t) = fast_two_sum(v(l - 52), v(l - 105));
     let r = DoubleDouble::from_sum(s, t + v(l - 158));
+    debug_assert!(r.hi() > LEMMA_D_FLOOR, "Lemma D: |r| = {r:?} at {x:?}");
     (q, if negative { -r } else { r })
 }
 
@@ -1548,7 +1632,7 @@ const REDUCTION_QUANTUM: f64 = f64::from_bits((1023 - 382) << 52);
 /// `tan x` from `(q, r)` and the sign of `x` (steps S3, S4).
 fn tan_from(q: u32, r: DoubleDouble, negative: bool) -> DoubleDouble {
     let r = if q % 2 == 1 && r.hi() == 0.0 {
-        // Step S4 (never observed: |r*| < 2⁻³¹⁵).
+        // Step S4 (unreachable by Lemma D: |r*| < 2⁻³¹⁵; a guard).
         DoubleDouble::from_f64(REDUCTION_QUANTUM)
     } else {
         r
@@ -2035,8 +2119,8 @@ mod tests {
         Iv::int(n).div(&Iv::int(d))
     }
 
-    /// Step S4, which no known argument reaches: an odd quadrant with `r =
-    /// 0` gives `∓2³⁸²`, within the declared bound of `tan` for every
+    /// Step S4, which no argument reaches (Lemma D): an odd quadrant with
+    /// `r = 0` gives `∓2³⁸²`, within the declared bound of `tan` for every
     /// `|r*| < 2⁻³¹⁵` consistent with `r = 0`; an even one gives `±0`.
     #[test]
     fn tangent_at_a_zero_reduction() {

@@ -53,6 +53,11 @@ jobs:
           cargo test --no-default-features --features simd
       - name: Test (release)
         run: cargo test --release
+      # Lemma D of Chapter 11.11 is a computer-assisted proof: the whole
+      # certificate (every exponent, about 20 s in release) is re-run here;
+      # the default run of the suite checks a sample of exponents only.
+      - name: Certificate of Lemma D (all exponents)
+        run: cargo test --release --test reduction_bound -- --ignored
       # The public API, and the whole book as docs.rs and Pages build it
       # (`--document-private-items`), with and without the default features.
       - name: Docs (default, no default features, all features; private items)
@@ -97,6 +102,13 @@ jobs:
           - { name: "x86_64 Windows", os: windows-latest, target: "" }
           - { name: "aarch64 Linux, NEON", os: ubuntu-24.04-arm, target: "" }
           - { name: "i686 Linux, 32 bits", os: ubuntu-latest, target: i686-unknown-linux-gnu }
+          # Big-endian (the golden bits are compared as `u64`, so a byte-order
+          # slip would show), run under QEMU user mode; no SIMD backend, so
+          # `backend()` is `"scalar"` with the default features.
+          - { name: "s390x Linux, big-endian, QEMU", os: ubuntu-latest, target: s390x-unknown-linux-gnu }
+          # WebAssembly with WASI, run by wasmtime; no SIMD backend either
+          # (no `simd128` path), and the test harness runs on one thread.
+          - { name: "wasm32 WASI, wasmtime", os: ubuntu-latest, target: wasm32-wasip1 }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
@@ -107,6 +119,29 @@ jobs:
       - name: 32-bit C toolchain
         if: matrix.target == 'i686-unknown-linux-gnu'
         run: sudo apt-get update && sudo apt-get install -y gcc-multilib
+      # The cross linker and libc of s390x, and `qemu-s390x` as cargo's
+      # runner (`-L`: where the s390x dynamic loader and libc live); the
+      # doc-tests run through the same runner.
+      - name: s390x C toolchain and QEMU
+        if: matrix.target == 's390x-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-s390x-linux-gnu libc6-dev-s390x-cross qemu-user
+          echo "CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_LINKER=s390x-linux-gnu-gcc" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_RUNNER=qemu-s390x -L /usr/s390x-linux-gnu" >> "$GITHUB_ENV"
+      # wasmtime from its release, pinned by version and by the SHA-256 that
+      # GitHub records for the asset (no third-party action), as cargo's
+      # runner for `wasm32-wasip1`.
+      - name: wasmtime
+        if: matrix.target == 'wasm32-wasip1'
+        run: |
+          V=v50.0.2
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o wasmtime.tar.xz "https://github.com/bytecodealliance/wasmtime/releases/download/$V/wasmtime-$V-x86_64-linux.tar.xz"
+          echo "5db0ca8e838ab95a51ba9acdf11f42888bcd0092dda45a86129ae540c4fa952c  wasmtime.tar.xz" | sha256sum -c -
+          tar xJf wasmtime.tar.xz
+          echo "$RUNNER_TEMP/wasmtime-$V-x86_64-linux" >> "$GITHUB_PATH"
+          echo "CARGO_TARGET_WASM32_WASIP1_RUNNER=wasmtime" >> "$GITHUB_ENV"
       - name: Test (debug and release; default and no default features)
         shell: bash
         run: |

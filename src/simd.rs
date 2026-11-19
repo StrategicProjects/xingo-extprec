@@ -139,6 +139,13 @@
 // into `vectorize`: a kernel that is not inlined there would be compiled
 // without them. Every function of this module is on that path.
 #![allow(clippy::inline_always)]
+// On a target with neither backend (s390x, wasm32, ...) `dispatch!` expands
+// to nothing, so the generic kernels are compiled (and type-checked) but
+// never called: step X3, the scalar reference, is the only path there.
+#![cfg_attr(
+    not(any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")),
+    allow(dead_code)
+)]
 
 use pulp::Simd;
 

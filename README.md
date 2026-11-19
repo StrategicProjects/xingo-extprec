@@ -320,6 +320,14 @@ an `f64` (`x += 1.0`) for `DoubleDouble` (`Interval` has both); `floor`,
   proven constant is honest up to a factor `1 + 2⁻⁸⁰` (the neglected
   products of errors), and every declared constant exceeds it by far more
   (the smallest margin is `log2` and `log10`: 12 declared, 11.7 proven).
+* **No argument near a multiple of `π/2`.** A computation in integers
+  (`tests/reduction_bound.rs`: continued fractions, and lattice reduction
+  where the two components of the argument are far apart, every case
+  checked exactly) shows that no double-double above `π/4` lies within
+  `2⁻¹²⁹` of a multiple of `π/2` (Lemma D of Chapter 11.11; the closest
+  found lies at `2⁻¹²⁴`). The lemma and its program were reviewed
+  independently, and the certificate recomputed with separate code. So the bound of `tan` proven in the chapter
+  holds for every argument.
 * **Subnormal regime.** All 23 elementary functions are tested against the
   oracle below `2⁻⁹⁶⁸`, at directed points and in property tests:
   subnormal arguments, normal ones with a subnormal trailing component
@@ -348,25 +356,21 @@ What is still open in 0.1. The ones that can be closed have an issue.
 1. **The proofs are not machine-checked.** They are first-order analyses
    written in the chapters of the sources, reviewed and tested, not
    verified by a proof assistant ([#2](https://github.com/StrategicProjects/xingo-extprec/issues/2)).
-2. **One gap in `tan`.** In an odd quadrant with a reduced argument below
-   `2⁻³⁰⁰` — never observed, the smallest found being `2⁻¹¹⁸`, but not
-   proven impossible — only the declared bound is proven, not the sharper
-   one of the chapter ([#1](https://github.com/StrategicProjects/xingo-extprec/issues/1)).
-3. **Platforms not run:** big-endian targets, WebAssembly, and x86 CPUs
+2. **Platforms not run:** big-endian targets, WebAssembly, and x86 CPUs
    without SSE2 ([#3](https://github.com/StrategicProjects/xingo-extprec/issues/3)).
-4. **The bounds hold in the safe range** (no overflow; every `two_prod`
+3. **The bounds hold in the safe range** (no overflow; every `two_prod`
    product of magnitude at least `2⁻⁹⁶⁹`, or zero). Below it the
    operations stay normalized with an absolute error of order `2⁻¹⁰⁷⁴`,
    and the elementary functions add `η = 2⁻¹⁰⁷⁴` to their bounds. An
    operand of magnitude `Ω` counts as overflow ([#6](https://github.com/StrategicProjects/xingo-extprec/issues/6)).
-5. **`forward_error_bound` covers one square system with point data**, in
+4. **`forward_error_bound` covers one square system with point data**, in
    the ∞-norm and by component: no solution sets of interval systems, no
    2-norm bounds, no non-square systems. It needs up to `2n` transposed
    solves and is quadratic in `n` when they are dense (21 s at `n = 10⁴`),
    so it does not reach `n ≫ 10⁵` ([#4](https://github.com/StrategicProjects/xingo-extprec/issues/4)). For a solution polished in
    double-double the bound can overestimate the true error (up to
    `7.7 · 10⁴` times observed; [#5](https://github.com/StrategicProjects/xingo-extprec/issues/5)).
-6. **The costs were measured on two machines**, neither of them idle; the
+5. **The costs were measured on two machines**, neither of them idle; the
    kernel and factorization rows on one only ([#7](https://github.com/StrategicProjects/xingo-extprec/issues/7)).
 
 ## Measured cost

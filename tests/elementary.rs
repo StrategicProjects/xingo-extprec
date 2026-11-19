@@ -716,6 +716,46 @@ fn trig_directed_points() {
     }
 }
 
+/// The double-doubles closest to an odd multiple of `π/2` known (Chapter
+/// 11.11, after Lemma D: three from small combinations of a reduced basis
+/// of the lattice of step D5, the others with `x_h` from the convergents of
+/// `2ᴱ · 2/π` and `x_ℓ = RN(kπ/2 − x_h)`; `|r*|` from `2⁻¹²⁴` to `2⁻¹¹⁵`). `tan` keeps there the
+/// sharper bound of the chapter, `27.4u²|tan x| + 2⁻³¹⁵(1 + tan²x)`, which
+/// Lemma D extends to every argument; and every trigonometric function its
+/// declared bound.
+#[test]
+fn tan_proven_bound_at_the_closest_arguments() {
+    let points: [(u64, u64); 11] = [
+        (0x79eb_505b_3500_2386, 0xbe8f_8846_4428_0273), // 2⁻¹²⁴·⁴⁶
+        (0x62c4_dc90_be5e_9554, 0xbd98_e4ab_59ed_7e43), // 2⁻¹²²·⁷⁸
+        (0x55ea_68ab_dea2_6f1c, 0xc350_4514_8da5_f879), // 2⁻¹²²·²⁹
+        (0x416b_951f_1572_eba5, 0x3c3f_54f5_227a_4e84), // 2⁻¹¹⁷·⁹⁹
+        (0x7506_ac5b_262c_a1ff, 0xbc21_4ae7_2e6b_a22f), // 2⁻¹¹⁷·⁴⁶, the worst f64 + RN(rest)
+        (0x7d23_cd06_d91b_de34, 0x3c91_8a0c_d011_d413), // 2⁻¹¹⁷·³³
+        (0x7c51_63dc_d0e3_814d, 0xbc72_e99f_5d9c_32f2), // 2⁻¹¹⁷·¹⁶
+        (0x4046_c6cb_c45d_c8de, 0xbc26_d61b_58c9_9c43), // 2⁻¹¹⁷·¹¹
+        (0x7fc6_1a3d_b8c8_d129, 0x3c5d_d15f_96b8_23f2), // 2⁻¹¹⁶·⁰²
+        (0x5852_2043_b9ac_94b5, 0x3c83_7392_e7bf_4dd7), // 2⁻¹¹⁵·⁶¹
+        (0x7ef3_6bf9_a50c_0440, 0x3c7d_90bc_c35f_f8fa), // 2⁻¹¹⁵·¹⁹
+    ];
+    for (h, l) in points {
+        let x = Dd::from_parts(f64::from_bits(h), f64::from_bits(l));
+        check_trig(x);
+        for x in [x, -x] {
+            let f = exact(&TAN, x);
+            // |tan x| > 2¹¹⁴: an odd quadrant with |r*| < 2⁻¹¹⁴.
+            assert!(Dy::pow2(114).lt(&f.abs()), "{x:?} is not that close");
+            let z = x.tan();
+            let g = f.abs().approx() * (1.0 - p2(-40));
+            assert!(
+                support::within((z.hi(), z.lo()), &f, 27.4, p2(-209), g, p2(-315)),
+                "tan({x:?}) = {z:?}: {:.3} u², beyond the proven bound",
+                support::err_u2((z.hi(), z.lo()), &f)
+            );
+        }
+    }
+}
+
 #[test]
 fn trig_symmetry_and_pairs() {
     let mut rng = Rng(5);

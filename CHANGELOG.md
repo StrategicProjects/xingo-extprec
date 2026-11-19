@@ -5,6 +5,30 @@ All notable changes to `xingo-extprec` are recorded here. The format follows
 follows [Semantic Versioning](https://semver.org/); before 1.0, a minor
 version may change the public API.
 
+## [Unreleased]
+
+### Changed
+
+* The bound of `tan` proven in Chapter 11.11, `27.4u²|tan x| + 2⁻³¹⁵(1 +
+  tan²x)`, now holds for every finite argument: Lemma D shows that no
+  double-double above `π/4` lies within `2⁻¹⁴⁰` of a multiple of `π/2` (in
+  fact `2⁻¹²⁹`; the closest found lies at `2⁻¹²⁴`), so the case left open
+  in 0.1 (an odd quadrant with a reduced argument below `2⁻³⁰⁰`) does not
+  exist. The proof is a computation in integers, `tests/reduction_bound.rs`
+  (continued fractions, and a lattice of dimension 3 reduced by LLL and
+  checked exactly); its full run is `#[ignore]`d, a sample runs by default.
+  Step S4 of `tan`, now known to be unreachable, stays as a guard. The
+  limitation "One gap in `tan`" is removed from the README and the landing
+  page. No change to the bits of any result and none to
+  `FUNCTION_BOUNDS`; debug builds assert the lemma in the argument
+  reduction.
+* The CI of the mirror also runs the suite on a big-endian target
+  (`s390x-unknown-linux-gnu` under QEMU) and on WebAssembly
+  (`wasm32-wasip1` under wasmtime), and re-runs the whole certificate of
+  Lemma D. For those targets the dev-dependency `proptest` drops its
+  features `fork` and `timeout` (unused), and the generic SIMD kernels,
+  which no backend calls there, are allowed to be dead code.
+
 ## [0.1.1] — 2026-11-18
 
 ### Changed
