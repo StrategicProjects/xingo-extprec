@@ -5,6 +5,38 @@ All notable changes to `xingo-extprec` are recorded here. The format follows
 follows [Semantic Versioning](https://semver.org/); before 1.0, a minor
 version may change the public API.
 
+## [Unreleased]
+
+### Changed
+
+* `verify::residual_of_dd` encloses the residual of a double-double
+  solution much more tightly: after the Dot2Err enclosure (steps V1–V3,
+  unchanged), steps V4–V7 of Chapter 11.10 split every product exactly,
+  run two passes of VecSum over the terms and bound the floating-point sum
+  of what is left a posteriori — the residual as if summed in three times
+  the working precision — and intersect the result with the Dot2Err
+  enclosure, which is therefore never widened (invariant V3; exact rows
+  keep their bits). The width goes from `≈ k² u² S` to a few ulps of the
+  residual plus `≈ 8N³u³S` (`N = 2k + 1` pairs). As a consequence the
+  bound of `verify::forward_error_bound` for a polished solution follows
+  its true error: on the optimal bases of the 93 Netlib LPs the
+  overestimation went from a median of about 230 (largest `7.7 · 10⁴`) to 1.000
+  at three digits on every basis with a nonzero error
+  ([#5](https://github.com/StrategicProjects/xingo-extprec/issues/5)).
+  No signature changes; `residual`, `residual_csc`, `activity` and every
+  result for an `f64` solution are unchanged bit for bit. Cost: about 65
+  more flops per stored entry in `residual_of_dd`.
+* The limitation "for a solution polished in double-double the bound can
+  overestimate the true error" is removed from the README and the landing
+  page.
+* Steps V4–V7 were reviewed independently: no enclosure missed the exact
+  residual in about 37 000 adversarial rows checked in exact arithmetic.
+  The review built a row on which a tail bound half as large as the proven
+  one would miss; it is now a regression test
+  (`tests/data/tail_bound_row.txt`). Should a defect ever make the
+  intersection empty, a release build now returns the Dot2Err enclosure
+  instead of an empty interval.
+
 ## [0.1.2] — 2026-11-19
 
 ### Changed

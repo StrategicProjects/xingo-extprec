@@ -392,7 +392,11 @@
 //!   `two_prod` per entry, the bound gains the second-order terms". No new
 //!   bound is needed: `Σ a_ij (h_j + ℓ_j) − b_i` *is* a dot product of
 //!   `f64` vectors of length `2k + 1`, to which Dot2Err applies as it
-//!   stands (Chapter 11.10).
+//!   stands (Chapter 11.10). Dot2Err's bound, however, is of the order of
+//!   a *polished* residual itself; since task X0.5 the enclosure is
+//!   narrowed by steps V4–V7 (two passes of VecSum and an a posteriori
+//!   bound of the rest: three times the working precision), intersected
+//!   with the Dot2Err one (issue #5 of the mirror).
 //! * **Step V3.** The enclosure is `[▽(h + ▽(ℓ − β)), △(h + △(ℓ + β))]`
 //!   for `r = h + ℓ`, not `enclose(r) + [−β, β]`: the same theorem, one to
 //!   two ulps narrower.

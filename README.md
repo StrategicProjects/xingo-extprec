@@ -112,7 +112,9 @@ assert!((s - Interval::point(0.3)).certainly_within(1e-15));
 **4. `verify`** (feature `sparse`) — Algorithm V encloses every residual
 `a_iᵀx − b_i` of a sparse system (`CsrMatrix` or `CscMatrix` of
 `xingo-sparse`) for an `f64` or a double-double `x`, at about 25 flops per
-nonzero; Algorithm P *polishes* `x` by iterative refinement with
+nonzero (about 115 for a double-double `x`, whose residual is summed as if
+in three times the working precision, so that its enclosure is a few ulps
+wide even at double-double level); Algorithm P *polishes* `x` by iterative refinement with
 double-double residuals around an `f64` solve the caller already has (an
 LU, say). The polished residual is then certified by Algorithm V.
 Algorithm E (`forward_error_bound`) turns an enclosed residual into a
@@ -371,9 +373,7 @@ What is still open in 0.1. The ones that can be closed have an issue.
    the ∞-norm and by component: no solution sets of interval systems, no
    2-norm bounds, no non-square systems. It needs up to `2n` transposed
    solves and is quadratic in `n` when they are dense (21 s at `n = 10⁴`),
-   so it does not reach `n ≫ 10⁵` ([#4](https://github.com/StrategicProjects/xingo-extprec/issues/4)). For a solution polished in
-   double-double the bound can overestimate the true error (up to
-   `7.7 · 10⁴` times observed; [#5](https://github.com/StrategicProjects/xingo-extprec/issues/5)).
+   so it does not reach `n ≫ 10⁵` ([#4](https://github.com/StrategicProjects/xingo-extprec/issues/4)).
 5. **The costs were measured on two machines**, neither of them idle; the
    kernel and factorization rows on one only ([#7](https://github.com/StrategicProjects/xingo-extprec/issues/7)).
 
@@ -399,7 +399,9 @@ of the 93 Netlib LPs by intervals takes 0.18 % of the solve time in total
 error of the basic solution by `forward_error_bound` certifies all 93 too,
 in 15 s for both an `f64` and a polished solution (the dual simplex takes
 about 30 s), with `ε` equal to the error measured against the polished
-point to three digits.
+point to three digits — and, for the polished solution, `ε̂` equal to its
+own true error to three digits as well (it was up to `7.7 · 10⁴` times
+larger in 0.1.2; [#5](https://github.com/StrategicProjects/xingo-extprec/issues/5)).
 
 An elementary function takes 190–760 ns per call on the M2 Pro (`exp` 233,
 `ln` 427, `sin` 344, `atan` 196, `powf` 758) and 310–1 030 ns on a Xeon

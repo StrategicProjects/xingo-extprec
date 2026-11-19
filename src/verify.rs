@@ -46,6 +46,30 @@
 //!     β))]`: the radius is applied to the *trailing* component, where it
 //!     is of the right size, before the leading one is added.
 //!
+//! For `x ∈ DD^n` ([`residual_of_dd`]) four more steps narrow `R_i` — the
+//! *distillation* of the residual (issue #5 of the mirror; "Why the
+//! polished residual needs more" below). `N = 2 k_i + 1` is the number of
+//! pairs of V1, `(p_j, q_j)` the pairs.
+//!
+//! V4. \[Split.\] `(π_j, ε_j) ← 2Prod(p_j, q_j)` for `j = 1, …, N`; `w ←
+//!     (π_1, ε_1, π_2, ε_2, …, π_N, ε_N)`, `2N` numbers. If one of them is
+//!     not finite, keep the `R_i` of V3 and stop.
+//! V5. \[Distil, twice.\] Two passes of *VecSum*: `σ ← w_1`; for `j = 2, …,
+//!     L` (`L` the current length of `w`): `(σ, w_{j−1}) ← 2Sum(σ, w_j)`;
+//!     then `w ← (w_1, …, w_{L−1})`. The two final `σ` are `σ_1`, `σ_2`; `w`
+//!     ends with `M = 2N − 2` numbers. If a `σ` or a `w_j` is not finite,
+//!     keep the `R_i` of V3 and stop.
+//! V6. \[Tail.\] `t ← RN(… RN(RN(w_1 + w_2) + w_3) … + w_M)` and `a ←` the
+//!     same sum of the `|w_j|` (`t = a = 0` if `M = 0`). With `m = max(M,
+//!     1) − 1`: if `2 m u ≥ 1`, or `t` or `a` is not finite, keep the `R_i`
+//!     of V3 and stop. Otherwise `β′ ← sup([δ]·[a] + [φ])`, `[δ] ← [m u] /
+//!     (1 − 2[m u])`, in `Interval` (`m u` is an `f64` exactly for `m <
+//!     2⁵²`), with `φ = (3η/u)(1 + 8u)`, the floor of `β` in step C5 of
+//!     Chapter 11.5 (an `f64` exactly).
+//! V7. \[Combine.\] `(s, τ) ← 2Sum(σ_1, σ_2)`; if `s` or `τ` is not finite,
+//!     keep the `R_i` of V3 and stop. `R′_i ← ((t ± β′) + τ) + s` in
+//!     `Interval` (`t ± β′` is `Interval::mid_rad`), and `R_i ← R_i ∩ R′_i`.
+//!
 //! **Proof of (V1).** `pᵀq` is the residual exactly: for a double-double
 //! `x`, `Σ_j a_ij (h_j + ℓ_j) − b_i = Σ_j a_ij h_j + Σ_j a_ij ℓ_j + (−1)
 //! b_i`, an identity of real numbers, and the value of `x_j` *is* `h_j +
@@ -62,18 +86,68 @@
 //! [−β, β]`, which is also correct and one to two ulps wider: it rounds
 //! `r` to its neighbours before the radius is added.)
 //!
-//! **Width.** For a finite result, `width(R_i) ≤ 2 ulp(r) + 2β (1 + 2u)`
-//! — typically one ulp, two when `r` is an `f64` — and `β` is of order
-//! `k² u² Σ_j |a_ij x_j|` (Chapter 11.5, step C5): the enclosure of a
+//! **Proof of (V1) for steps V4–V7.** Write `s* = pᵀq`, the exact residual.
+//! (a) *Split.* By (T2) of Chapter 11.1, with `π_j` finite, `p_j q_j = π_j +
+//! ε_j − μ_j` with `μ_j = 0` when the product is in the exact range and
+//! `|μ_j| ≤ η/2` otherwise; so `s* = Σ w − μ`, `|μ| ≤ N η/2`. (b) *Distil.*
+//! By (T1), a 2Sum whose outputs are finite is exact (its only failure, at
+//! `|a| = Ω`, leaves the error term not finite, and V5 tests every one), so
+//! each pass keeps the exact sum: `Σ w⁽⁰⁾ = σ_1 + Σ w⁽¹⁾ = σ_1 + σ_2 + Σ
+//! w⁽²⁾`. (c) *Tail.* `t` is a floating-point sum of the `M` numbers of
+//! `w⁽²⁾`. An addition is exact when its result is subnormal, so every
+//! addition errs by at most `u` times its result, underflow or not; none
+//! overflowed, since an infinite partial sum cannot come back finite and
+//! `t`, `a` are finite. Hence `|Σ w⁽²⁾ − t| ≤ γ_m Σ|w_j|` (the
+//! order-independent bound of Higham §4.2, `m = M − 1` additions), and
+//! since each of the `m` additions of `a` is `RN(c) = c/(1 + θ)`, `|θ| ≤
+//! u`, `Σ|w_j| ≤ (1 + u)^m a`. With `m u < 1/2`, `(1 + u)^m ≤ e^{mu} ≤ 1/(1
+//! − mu)` and `(1 − mu)² ≥ 1 − 2mu`, so `γ_m (1 + u)^m ≤ mu/(1 − 2mu) = δ`,
+//! and `|Σ w⁽²⁾ − t| ≤ δ a`. `[δ]` contains `δ` (I1; `m u` is exact), and
+//! `φ > 3 · 2⁵³ η ≥ N η/2` (`N ≤ m/2 + 2 < 2⁵¹ + 2`), so `δ a + N η/2 ≤
+//! β′`. (d) *Combine.* `σ_1 + σ_2 = s + τ` exactly (T1, both
+//! finite). So `s* = s + τ + t + (Σ w⁽²⁾ − t) − μ` lies in `((t ± β′) +
+//! τ) + s` (I1), i.e. in `R′_i`; and in the `R_i` of V3 by the proof
+//! above; so in their intersection. ∎ (When a step keeps the `R_i` of V3,
+//! nothing new is claimed.) The intersection makes V4–V7 **never widen**
+//! the enclosure of V3 (invariant V3), and leaves it bit for bit when
+//! `R′_i ⊇ R_i`. That is the case when every operation of V2 and V4–V7 is
+//! exact and the residual is an `f64`: both are then that `f64` widened by
+//! `φ` — the floor is shared so that an exact row keeps its V3 bits.
+//!
+//! **Width.** For a finite result of V3, `width(R_i) ≤ 2 ulp(r) + 2β (1 +
+//! 2u)` — typically one ulp, two when `r` is an `f64` — and `β` is of
+//! order `k² u² Σ_j |a_ij x_j|` (Chapter 11.5, step C5): the enclosure of a
 //! residual of size `ρ` computed from terms of size `S` has
 //! a relative width of about `u + k² u² S/ρ`. An `f64` solution leaves `ρ
-//! ≈ κ u S` at best, so its residual is enclosed to about 16 digits; a
-//! polished one has `ρ ≈ k u² S`, of the order of the bound itself, and
-//! the certificate then reads "`|a_iᵀx − b_i| ≤ c k² u² S`" — which is the
-//! most that double-double accumulation can prove.
+//! ≈ κ u S` at best, so its residual is enclosed to about 16 digits by V3
+//! alone. A polished one has `ρ ≈ k u² S`, of the order of `β` itself: V3
+//! then only proves "`|a_iᵀx − b_i| ≤ c k² u² S`".
 //!
-//! **Cost.** About 25 flops per stored entry for `x ∈ F^n` and 50 for `x ∈
-//! DD^n`, and two gather buffers of the length of the longest row.
+//! *Why the polished residual needs more, and what V4–V7 give.* VecSum
+//! leaves error terms bounded by `γ_{L−1}` times the sum of the magnitudes
+//! it was given (Ogita, Rump & Oishi, Lemma 4.2 — cited from memory; the
+//! proof above does not use it), so after two passes `Σ|w⁽²⁾| ≲ 4N²u² S`
+//! and `β′ ≲ 8 N³ u³ S`, against `β ≈ N² u² S` for Dot2Err: one more factor
+//! `N u` — the accuracy of a sum in *three* times the working precision
+//! (SumK with `K = 3`, *ibid.* Algorithm 4.8), with an a posteriori bound
+//! in place of theirs. The other terms of the width are the outward
+//! roundings of V7, a few ulps of `s*` when `|s*| ≳ β′`. With `ρ ≈ k u² S`
+//! the relative width falls from `≈ k` to `≈ u + k² u`. **Measured** on
+//! the polished optimal bases of the 93 Netlib LPs (task X0.5, rows of up
+//! to 6 185 entries): the largest half-width over `‖r‖∞` of a basis went
+//! from `126` (median) and `9.4 · 10⁴` (largest) with V3 alone to at most
+//! `7.2 · 10⁻¹¹` with V4–V7. A third pass of V5 changed none of the bounds
+//! of Algorithm E below at three digits, so the chapter stops at two.
+//!
+//! **Cost.** About 25 flops per stored entry for `x ∈ F^n`; for `x ∈ DD^n`
+//! about 50 for V1–V3 and 65 more for V4–V7 (one 2Prod, four 2Sum and the
+//! tail per pair, two pairs per entry), and two gather buffers of the
+//! length of the longest row and one of four times that. Measured (task
+//! X0.5, M2 Pro under load, eight polished Netlib systems of 2 392 to
+//! 18 301 rows): [`residual_of_dd`] takes 3.0 to 4.5 times as long as V1–V3
+//! alone (whose Dot2Err is vectorized; V4–V7 are scalar), 0.4 to 3.4 ms — at most 5 % of the time of
+//! Algorithm E on the same bases, except where the basis is far smaller
+//! than the system (fit2d: `m = 25`, Algorithm E under 1 ms).
 //! [`residual_csc`] first converts to compressed rows (`O(nnz)` time and
 //! memory).
 //!
@@ -312,10 +386,20 @@
 //! `C e`, and `C` is small: in the measurements of the contract (task X0.3,
 //! decision log D-0125) `ε/‖e‖∞` was between 1.00 and 1.04 on every
 //! certified case with `α ≤ 0.04`, and 1.00 on all 93 optimal bases of
-//! Netlib. For a polished solution the exact residual is of the order of
-//! the width of its enclosure ("Width" above) and the bound reflects
-//! `|R| rad([r])`: overestimation from 1 to `7.7 · 10⁴` observed (median
-//! 223 on Netlib) — a limit of Algorithm V, not of E. One solve per row
+//! Netlib. For a polished solution the same holds since steps V4–V7 of
+//! Algorithm V (task X0.5): before them its exact residual was of the
+//! order of the width of its Dot2Err enclosure ("Width" above), `g_p`
+//! reflected `|R| rad([r])`, and the overestimation `ε̂/‖e‖∞` went from
+//! 1.4 to `7.7 · 10⁴` (median about 230 over the 88 bases with a nonzero
+//! error). Measured term by term on those bases, nothing else contributed:
+//! `α ≤ 1.2 · 10⁻⁷`, so `1/(1 − α)` and `ρ_p ε` are invisible at three
+//! digits, and with `[r]` replaced by a tight enclosure of the *exact*
+//! residual (computed in rationals) the ratio was already 1.000 on every
+//! basis — `|R| |r|` does not overestimate `|R r|` there. With V4–V7 the
+//! ratio is 1.000 at three digits on all 88 too (the true error bracketed
+//! rigorously, by Algorithm E itself on `A e = A x̂ − b` with the exact
+//! residual), and at most `1 + 5 · 10⁻⁶` on the dense test matrices of
+//! `κ ≤ 10¹⁴` (before: up to 572). One solve per row
 //! leaves `α` of the order of `κ(A) u`; the refinement E2 lowers it by
 //! orders of magnitude (`7.5 · 10⁻³ → 3.1 · 10⁻⁶` at `κ = 10¹⁴`, order
 //! 20): measured, it certifies dense matrices up to `κ ≈ 10¹⁶`, where one
@@ -356,6 +440,13 @@
 //!      hypothesis fails (C3). Checked against exact rationals.
 //! (V2) *Well-formed.* Every interval returned satisfies (I2) of Chapter
 //!      11.9 and is not empty (a `debug_assert!`).
+//! (V3) *Never wider.* Each row of [`residual_of_dd`] is contained in the
+//!      enclosure of steps V1–V3 for the same pairs (by construction, the
+//!      intersection of V7; a `debug_assert!`; an empty intersection, which
+//!      only a defect could produce, falls back to the enclosure of V3).
+//!      Checked against exact rationals, with the width `≤ 8u|s*| +
+//!      2⁻¹²⁸S + 2⁻¹⁰⁰⁰`, and on a row built so that the tail bound `β′`
+//!      is needed to within a factor 1.7 (`tests/data/tail_bound_row.txt`).
 //! (P1) *Monotone.* [`PolishReport::residual_after`] `≤`
 //!      [`PolishReport::residual_before`] whenever the latter is finite (a
 //!      `debug_assert!`).
@@ -382,7 +473,10 @@
 //! ## References
 //! Ogita, Rump & Oishi, "Accurate sum and dot product", SIAM J. Sci.
 //! Comput. 26 (2005), Algorithm 5.8 and Corollary 5.9 (through Chapter
-//! 11.5, which adapts and proves them); Higham, *Accuracy and Stability of
+//! 11.5, which adapts and proves them), and VecSum and SumK (their
+//! Algorithms 4.3 and 4.8, Lemma 4.2), the model of steps V4–V7 — **cited
+//! from memory**; the a posteriori bound of V6 and its proof are this
+//! chapter's; Higham, *Accuracy and Stability of
 //! Numerical Algorithms*, 2nd ed. (2002), ch. 12 (iterative refinement;
 //! §12.1 for the mixed-precision form) — **cited from memory**, the
 //! statement above is the qualitative one and nothing in the code depends
@@ -402,6 +496,7 @@
 use xingo_sparse::{Col, CscMatrix, CsrMatrix, Row};
 
 use crate::dd::DoubleDouble;
+use crate::eft::{two_prod, two_sum};
 use crate::interval::Interval;
 use crate::kernels;
 
@@ -460,13 +555,82 @@ fn enclosure(r: DoubleDouble, beta: f64) -> Interval {
     x
 }
 
+/// One pass of VecSum (step V5): replaces `w` by the errors of the cascade
+/// of 2Sum over it (one shorter) and returns the sum; `None` if a value
+/// produced is not finite (then nothing is claimed: (T1)).
+fn vec_sum(w: &mut Vec<f64>) -> Option<f64> {
+    let Some(&first) = w.first() else {
+        return Some(0.0);
+    };
+    let mut sigma = first;
+    for j in 1..w.len() {
+        let (s, e) = two_sum(sigma, w[j]);
+        if !(s.is_finite() && e.is_finite()) {
+            return None;
+        }
+        w[j - 1] = e;
+        sigma = s;
+    }
+    w.pop();
+    Some(sigma)
+}
+
+/// `φ = (3η/u)(1 + 8u)`, the underflow term of step V6: the floor of `β` in
+/// step C5 of Chapter 11.5, exactly (the product is an `f64`).
+const FLOOR: f64 = 6.0 * f64::MIN_POSITIVE * (1.0 + 4.0 * f64::EPSILON);
+
+/// Steps V4–V7 for the pairs `(p, q)`: `R′ ∋ pᵀq`, or `None` when a step
+/// keeps the enclosure of V3. `w` is a buffer.
+fn distilled(p: &[f64], q: &[f64], w: &mut Vec<f64>) -> Option<Interval> {
+    /// `2(m u) < 1` iff `m < 2⁵²`.
+    const MAX_TERMS: usize = 1 << 52;
+    // V4.
+    w.clear();
+    for (&pj, &qj) in p.iter().zip(q) {
+        let (pi, eps) = two_prod(pj, qj);
+        if !(pi.is_finite() && eps.is_finite()) {
+            return None;
+        }
+        w.push(pi);
+        w.push(eps);
+    }
+    // V5.
+    let sigma_1 = vec_sum(w)?;
+    let sigma_2 = vec_sum(w)?;
+    // V6: `t` and `a` left to right, as the chapter states.
+    let (mut t, mut a) = (0.0_f64, 0.0_f64);
+    for &v in w.iter() {
+        t += v;
+        a += v.abs();
+    }
+    let m = w.len().max(1) - 1;
+    if m >= MAX_TERMS || !(t.is_finite() && a.is_finite()) {
+        return None;
+    }
+    #[allow(clippy::cast_precision_loss)] // exact: m < 2⁵²
+    let mu = m as f64 * U;
+    let delta = Interval::point(mu) / (1.0 - Interval::point(2.0 * mu));
+    let beta = upper((delta * Interval::point(a) + Interval::point(FLOOR)).sup());
+    if !beta.is_finite() {
+        return None;
+    }
+    // V7.
+    let (s, tau) = two_sum(sigma_1, sigma_2);
+    if !(s.is_finite() && tau.is_finite()) {
+        return None;
+    }
+    Some(Interval::mid_rad(t, beta) + tau + s)
+}
+
 /// Algorithm V over the rows of `a`: `fill(i, cols, vals, p, q)` appends
-/// to the empty `(p, q)` the pairs of row `i` (step V1).
+/// to the empty `(p, q)` the pairs of row `i` (step V1); with `distil`,
+/// steps V4–V7 narrow each row.
 fn rows(
     a: &CsrMatrix<f64>,
+    distil: bool,
     mut fill: impl FnMut(usize, &[u32], &[f64], &mut Vec<f64>, &mut Vec<f64>),
 ) -> Vec<Interval> {
-    let (mut p, mut q) = (Vec::new(), Vec::new());
+    let (mut p, mut q, mut w) = (Vec::new(), Vec::new(), Vec::new());
     (0..a.n_rows())
         .map(|i| {
             p.clear();
@@ -474,7 +638,24 @@ fn rows(
             let (cols, vals) = a.row(Row::from_usize(i));
             fill(i, cols, vals, &mut p, &mut q); // V1
             let (r, beta) = kernels::dot2_err(&p, &q); // V2
-            enclosure(r, beta) // V3
+            let x = enclosure(r, beta); // V3
+            if !distil {
+                return x;
+            }
+            match distilled(&p, &q, &mut w) {
+                None => x,
+                Some(narrow) => {
+                    let y = x.intersection(narrow);
+                    debug_assert!(
+                        !y.is_empty() && y.is_subset_of(x),
+                        "V1/V3: {x:?} ∩ {narrow:?} in row {i}"
+                    );
+                    // Both contain the residual, so the intersection is never
+                    // empty; should a defect of V4–V7 make it so, a release
+                    // build falls back to the enclosure of V3 (V2).
+                    if y.is_empty() { x } else { y }
+                }
+            }
         })
         .collect()
 }
@@ -493,7 +674,7 @@ fn rows(
 pub fn residual(a: &CsrMatrix<f64>, x: &[f64], b: &[f64]) -> Result<Vec<Interval>, VerifyError> {
     dimension(a.n_cols(), x.len())?;
     dimension(a.n_rows(), b.len())?;
-    Ok(rows(a, |i, cols, vals, p, q| {
+    Ok(rows(a, false, |i, cols, vals, p, q| {
         p.extend_from_slice(vals);
         q.extend(cols.iter().map(|&j| x[j as usize]));
         p.push(-1.0);
@@ -502,7 +683,12 @@ pub fn residual(a: &CsrMatrix<f64>, x: &[f64], b: &[f64]) -> Result<Vec<Interval
 }
 
 /// Algorithm V for a double-double (polished) solution: `R_i ∋ a_iᵀx −
-/// b_i` for the exact values `hi + lo` of the components of `x`.
+/// b_i` for the exact values `hi + lo` of the components of `x`. Steps
+/// V4–V7 of Chapter 11.10 distil the residual as if it were summed in
+/// three times the working precision, so that the width follows a residual
+/// of double-double size: a few ulps of it plus `≈ 8N³u³ Σ_j |a_ij x_j|`
+/// for `N = 2k + 1` pairs, never wider than the Dot2Err enclosure of steps
+/// V1–V3 (invariant V3).
 ///
 /// # Errors
 /// [`VerifyError::Dimension`].
@@ -516,8 +702,8 @@ pub fn residual_of_dd(
 ) -> Result<Vec<Interval>, VerifyError> {
     dimension(a.n_cols(), x.len())?;
     dimension(a.n_rows(), b.len())?;
-    // V1: the leading terms first, then the trailing ones.
-    Ok(rows(a, |i, cols, vals, p, q| {
+    // V1: the leading terms first, then the trailing ones; V4–V7.
+    Ok(rows(a, true, |i, cols, vals, p, q| {
         p.extend_from_slice(vals);
         q.extend(cols.iter().map(|&j| x[j as usize].hi()));
         p.extend_from_slice(vals);
@@ -600,7 +786,7 @@ pub fn norm_inf_bound(r: &[Interval]) -> f64 {
 /// If `a` violates the invariants of its type.
 pub fn activity(a: &CsrMatrix<f64>, x: &[f64]) -> Result<Vec<Interval>, VerifyError> {
     dimension(a.n_cols(), x.len())?;
-    Ok(rows(a, |_, cols, vals, p, q| {
+    Ok(rows(a, false, |_, cols, vals, p, q| {
         p.extend_from_slice(vals);
         q.extend(cols.iter().map(|&j| x[j as usize]));
     }))

@@ -292,6 +292,184 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------
+// Steps V4–V7: the distilled residual of a double-double solution (task
+// X0.5, issue #5 of the mirror)
+// ---------------------------------------------------------------------
+
+/// Steps V2–V3 alone, as `residual_of_dd` computed them before X0.5 (the
+/// pairs of step V1 for row `r`).
+fn dot2_err_enclosure(r: &[(u32, f64)], x: &[Dd], b: f64) -> Interval {
+    let (mut p, mut s) = (Vec::new(), Vec::new());
+    for &(j, v) in r {
+        p.push(v);
+        s.push(x[j as usize].hi());
+    }
+    for &(j, v) in r {
+        p.push(v);
+        s.push(x[j as usize].lo());
+    }
+    p.push(-1.0);
+    s.push(b);
+    let (d, beta) = xingo_extprec::kernels::dot2_err(&p, &s);
+    if beta.is_finite() && d.hi().is_finite() && d.lo().is_finite() {
+        Interval::mid_rad(d.lo(), beta) + d.hi()
+    } else {
+        Interval::ENTIRE
+    }
+}
+
+/// The double-double nearest the rational `c` (two correctly rounded
+/// conversions); zero if `c` is beyond the range of `f64`.
+fn dd_nearest(c: &RBig) -> Dd {
+    let hi = c.to_f64().value();
+    if !hi.is_finite() {
+        return Dd::ZERO;
+    }
+    let lo = (c.clone() - q(hi)).to_f64().value();
+    Dd::from_sum(hi, lo)
+}
+
+/// A *polished* system: row `i` has a private column `i` with a power of
+/// two `±2ᵉ`, and `x_i` is the double-double nearest the exact solution of
+/// that row given the other components — so the residual is of order `u²`
+/// times its terms, the case of issue #5. The other columns are shared.
+fn polished_system(
+    max: usize,
+    density: f64,
+    value: fn() -> BoxedStrategy<f64>,
+) -> impl Strategy<Value = (usize, Rows, Vec<Dd>, Vec<f64>)> {
+    (1..=max.min(8), 1..=max).prop_flat_map(move |(m, k)| {
+        let n = m + k;
+        let entry = prop::option::weighted(density, value());
+        let shared = prop::collection::vec(prop::collection::vec(entry, k), m);
+        let pivots = prop::collection::vec((-8_i32..=8, any::<bool>()), m);
+        let x = prop::collection::vec(with_trailing(value()), k);
+        let b = prop::collection::vec(value(), m);
+        (shared, pivots, x, b).prop_map(move |(shared, pivots, xs, b)| {
+            let mut x: Vec<Dd> = vec![Dd::ZERO; m];
+            x.extend(xs);
+            let mut rows = Rows::new();
+            for (i, (r, (e, neg))) in shared.iter().zip(&pivots).enumerate() {
+                let pivot = if *neg { -2f64.powi(*e) } else { 2f64.powi(*e) };
+                let mut row = vec![(u32::try_from(i).expect("small"), pivot)];
+                let mut c = q(b[i]);
+                for (j, v) in r.iter().enumerate() {
+                    if let Some(v) = *v {
+                        row.push((u32::try_from(m + j).expect("small"), v));
+                        c -= q(v) * qd(x[m + j]);
+                    }
+                }
+                x[i] = dd_nearest(&(c / q(pivot)));
+                rows.push(row);
+            }
+            (n, rows, x, b)
+        })
+    })
+}
+
+/// A row whose exact residual is `−b`, with every term cancelled by a
+/// partner far away in the order of accumulation: columns `π(2l)` and
+/// `π(2l + 1)` hold `c_l` and `−c_l` and share the value `d_l`. The partial
+/// sums of step V5 round at every step, so the tail `w⁽²⁾` of step V6 is not
+/// summed exactly — the case where the error term `β′` is needed.
+fn cancelling_row(pairs: usize) -> impl Strategy<Value = (usize, Rows, Vec<Dd>, Vec<f64>)> {
+    (1..=pairs).prop_flat_map(|l| {
+        (
+            prop::collection::vec(normal(-200, 200), l),
+            prop::collection::vec(with_trailing(normal(-200, 200)), l),
+            Just((0..2 * l).collect::<Vec<usize>>()).prop_shuffle(),
+            prop_oneof![2 => Just(0.0), 1 => normal(-1074 + 60, -600)],
+        )
+            .prop_map(|(c, d, perm, b)| {
+                let n = 2 * c.len();
+                let mut x = vec![Dd::ZERO; n];
+                let mut row = Vec::with_capacity(n);
+                for (l, (&cl, &dl)) in c.iter().zip(&d).enumerate() {
+                    let (j, k) = (perm[2 * l], perm[2 * l + 1]);
+                    x[j] = dl;
+                    x[k] = dl;
+                    row.push((u32::try_from(j).expect("small"), cl));
+                    row.push((u32::try_from(k).expect("small"), -cl));
+                }
+                row.sort_by_key(|e| e.0);
+                (n, vec![row], x, vec![b])
+            })
+    })
+}
+
+/// (V1) and (V3) for `residual_of_dd`, and — with `sharp` — the width of
+/// steps V4–V7: `≤ 8u|s*| + 2⁻¹²⁸ S + 2⁻¹⁰⁰⁰` (the chapter: a few ulps of
+/// the residual and `β′ ≲ 8N³u³S`, `N ≤ 121` here, so `2β′ ≲ 2⁻¹³⁴ S`).
+fn check_distilled(
+    n: usize,
+    rows: &Rows,
+    x: &[Dd],
+    b: &[f64],
+    sharp: bool,
+) -> Result<(), TestCaseError> {
+    let a = csr(n, rows);
+    let r = residual_of_dd(&a, x, b).expect("dimensions");
+    let xq: Vec<RBig> = x.iter().map(|&v| qd(v)).collect();
+    let u = pow2_neg(53);
+    for (i, (res, mass)) in exact_rows(rows, &xq, b).iter().enumerate() {
+        prop_assert!(r[i].check_invariants().is_ok() && !r[i].is_empty());
+        prop_assert!(has(r[i], res), "row {i}: {res} is not in {:?}", r[i]);
+        let before = dot2_err_enclosure(&rows[i], x, b[i]);
+        prop_assert!(
+            r[i].is_subset_of(before),
+            "V3, row {i}: {:?} ⊄ {before:?}",
+            r[i]
+        );
+        if sharp {
+            let allowed = RBig::from(8) * u.clone() * abs(res.clone())
+                + pow2_neg(128) * mass.clone()
+                + pow2_neg(1000);
+            prop_assert!(
+                r[i].width().is_finite() && q(r[i].width()) <= allowed,
+                "row {i} is too wide: {:?} for {res}",
+                r[i]
+            );
+        }
+    }
+    Ok(())
+}
+
+proptest! {
+    #![proptest_config(config(256))]
+
+    /// Polished residuals (`≈ u²` of their terms) are enclosed, never wider
+    /// than by Dot2Err alone, and to a few ulps of themselves.
+    #[test]
+    fn polished_residuals_are_distilled((n, rows, x, b) in polished_system(60, 0.5, moderate)) {
+        check_distilled(n, &rows, &x, &b, true)?;
+    }
+
+    /// The same with data that overflow and underflow: enclosed or
+    /// unbounded, never wider than before.
+    #[test]
+    fn polished_wild_residuals_are_enclosed((n, rows, x, b) in polished_system(30, 0.6, wild)) {
+        check_distilled(n, &rows, &x, &b, false)?;
+    }
+
+    /// Exact cancellation across the whole row: the residual is `−b` (zero
+    /// or tiny). On these rows the outward roundings and the floor `φ`
+    /// already cover the tail of step V6; the row of
+    /// `tail_bound_is_needed_on_a_built_row` is the one where `β′` matters.
+    #[test]
+    fn cancelled_rows_are_enclosed((n, rows, x, b) in cancelling_row(40)) {
+        check_distilled(n, &rows, &x, &b, true)?;
+    }
+
+    /// The earlier families, through the distillation's checks.
+    #[test]
+    fn ordinary_and_wild_dd_residuals_are_never_wider(
+        (n, rows, x, b) in prop_oneof![system(20, 0.6, moderate), system(20, 0.6, wild)],
+    ) {
+        check_distilled(n, &rows, &x, &b, false)?;
+    }
+}
+
+// ---------------------------------------------------------------------
 // Polishing
 // ---------------------------------------------------------------------
 
@@ -341,6 +519,45 @@ impl DenseLu {
         }
         s.copy_from_slice(&y);
     }
+}
+
+/// A row built by the independent review of steps V4–V7 (D-0133) so that the
+/// tail sum of step V6 stays exactly 1 while the true tail grows by ≈
+/// `0.58 m u a`: every addition of the middle columns is a tie rounded the
+/// same way. The enclosure must contain the exact residual, and the exact
+/// residual must lie in the outer half of it — so that a tail bound `β′`
+/// half as large as the proven one would miss it (the review built that
+/// mutant: `[4.999999999999911, 5.000000000000089]` against the exact
+/// `5 + …`). Format: `k`, then `k` triples `(a_j, x_j hi, x_j lo)` and `b`, as
+/// `f64` bits in hexadecimal.
+#[test]
+fn tail_bound_is_needed_on_a_built_row() {
+    let text = include_str!("data/tail_bound_row.txt");
+    let t: Vec<&str> = text.split_whitespace().collect();
+    let f = |s: &str| f64::from_bits(u64::from_str_radix(s, 16).expect("hex"));
+    let k: usize = t[0].parse().expect("k");
+    let (mut vals, mut x) = (Vec::new(), Vec::new());
+    for j in 0..k {
+        vals.push(f(t[1 + 3 * j]));
+        x.push(Dd::from_parts(f(t[2 + 3 * j]), f(t[3 + 3 * j])));
+    }
+    let b = f(t[1 + 3 * k]);
+    let cols: Vec<u32> = (0..u32::try_from(k).expect("small")).collect();
+    let a = CsrMatrix::from_raw_parts(k, vec![0, k], cols, vals.clone()).expect("a row");
+    let r = residual_of_dd(&a, &x, &[b]).expect("dimensions")[0];
+    let exact = vals
+        .iter()
+        .zip(&x)
+        .fold(zero(), |acc, (&v, &xj)| acc + q(v) * qd(xj))
+        - q(b);
+    assert!(has(r, &exact), "{r:?} misses the exact residual");
+    let (lo, hi) = (q(r.inf()), q(r.sup()));
+    let mid = (lo.clone() + hi.clone()) / RBig::from(2);
+    let rad = (hi - lo) / RBig::from(2);
+    assert!(
+        abs(exact - mid) * RBig::from(2) > rad,
+        "{r:?}: the exact residual is in the inner half, so this row no longer tests β′"
+    );
 }
 
 /// The exact solution of the dense system, by rational elimination.
@@ -583,5 +800,35 @@ proptest! {
         for (i, (res, _)) in exact_rows(&rows, &xq, &b).iter().enumerate() {
             prop_assert!(has(r[i], res), "row {i}: {res} is not in {:?}", r[i]);
         }
+    }
+}
+
+/// `XINGO_SEARCH_CASES` cases (default 20 000) for the `#[ignore]`d
+/// search.
+fn search_config() -> ProptestConfig {
+    let cases = std::env::var("XINGO_SEARCH_CASES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20_000);
+    config(cases)
+}
+
+proptest! {
+    #![proptest_config(search_config())]
+
+    /// Task X0.5: the four families of steps V4–V7 at length — (V1), (V3)
+    /// and, on ordinary data, the width. Run with `cargo test -p
+    /// xingo-extprec --release --test verify -- --ignored`.
+    #[test]
+    #[ignore = "a long search; run in release with --ignored"]
+    fn search_distilled_residuals(
+        (sharp, (n, rows, x, b)) in prop_oneof![
+            polished_system(60, 0.5, moderate).prop_map(|s| (true, s)),
+            polished_system(30, 0.6, wild).prop_map(|s| (false, s)),
+            cancelling_row(60).prop_map(|s| (true, s)),
+            system(20, 0.6, wild).prop_map(|s| (false, s)),
+        ],
+    ) {
+        check_distilled(n, &rows, &x, &b, sharp)?;
     }
 }

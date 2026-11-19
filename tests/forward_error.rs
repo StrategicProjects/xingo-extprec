@@ -538,6 +538,41 @@ fn condition_numbers_from_1e2_to_1e16() {
     }
 }
 
+/// Issue #5 of the mirror (task X0.5): for a solution polished in
+/// double-double the bound follows the true error too, because steps V4–V7
+/// enclose its residual far below the residual's own size. Before them the
+/// bound reflected the width of the Dot2Err enclosure: on these twelve
+/// matrices `ε̂/‖e‖∞` was between 1.006 and 572 (median 11; up to 7.7 · 10⁴
+/// on Netlib); now at most `1 + 5 · 10⁻⁶`.
+#[test]
+fn a_polished_solution_is_bounded_to_its_true_error() {
+    let n = 12;
+    let mut worst = 0.0_f64;
+    for kappa in [1e2, 1e6, 1e10, 1e14] {
+        for seed in [1_u64, 2, 3] {
+            let a = dense_kappa(n, kappa, 0x9e37_79b9_7f4a_7c15 ^ (seed * 31 + 7));
+            let case = Case::new(a, None);
+            let xq: Vec<RBig> = case.xd.iter().map(|&v| qd(v)).collect();
+            let e = exact_errors(&case.a, &case.b, &xq).expect("nonsingular");
+            let r = residual_of_dd(&case.a.csr(), &case.xd, &case.b).expect("dimensions");
+            let bound = Closure::Lu.bound(&case.a, &r, REFINE);
+            check(&bound, Some(&e), "polished").expect("Theorem E");
+            let truth = norm_f64(&e);
+            assert!(
+                bound.is_certified() && truth > 0.0,
+                "κ = {kappa:e}, seed {seed}: {bound:?}, ‖e‖∞ = {truth:e}"
+            );
+            worst = worst.max(bound.norm_inf / truth);
+            assert!(
+                bound.norm_inf <= 1.1 * truth,
+                "κ = {kappa:e}, seed {seed}: ε̂ = {:e}, ‖e‖∞ = {truth:e}",
+                bound.norm_inf
+            );
+        }
+    }
+    eprintln!("largest ε̂/‖e‖∞ for a polished solution: {worst}");
+}
+
 /// The refinement of step E2 lowers `α` by orders of magnitude at `κ ≈
 /// 10¹⁶`, order 60 (the pilot's dense60-k1e16 cases): on the first
 /// matrix, one solve per row does not certify at all.
@@ -1105,5 +1140,32 @@ proptest! {
                 check(&bound, Some(&e), label).map_err(TestCaseError::fail)?;
             }
         }
+    }
+}
+
+/// `XINGO_SEARCH_CASES` cases (default 20 000) for the `#[ignore]`d
+/// searches.
+fn search_config() -> ProptestConfig {
+    let cases = std::env::var("XINGO_SEARCH_CASES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20_000);
+    config(cases)
+}
+
+proptest! {
+    #![proptest_config(search_config())]
+
+    /// Task X0.5 (steps V4–V7 of Algorithm V): the three families above
+    /// with every closure and both options, `x̃` in `f64` and polished —
+    /// never a false bound. Run with `cargo test -p xingo-extprec --release
+    /// --test forward_error -- --ignored`.
+    #[test]
+    #[ignore = "a long search; run in release with --ignored"]
+    fn search_polished_solutions_never_get_a_false_bound(
+        (a, b) in prop_oneof![square(8, 0.6, moderate), square(6, 1.0, moderate), square(6, 0.6, wild)],
+    ) {
+        let case = Case::new(a, Some(b));
+        case.check_all(&Closure::ALL).map_err(TestCaseError::fail)?;
     }
 }
