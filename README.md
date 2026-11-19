@@ -345,9 +345,10 @@ an `f64` (`x += 1.0`) for `DoubleDouble` (`Interval` has both); `floor`,
 * **Platforms.** The suite, with the golden bits of the elementary
   functions and the SIMD kernels compared bit for bit with the scalar
   reference, runs in the CI of the mirror on x86_64 Linux, x86_64 Windows,
-  aarch64 Linux and macOS (NEON) and i686 Linux (32 bits), and was run by
-  hand on x86_64 Linux with AVX2 + FMA (a Xeon E5 v4) and on x86_64 macOS
-  under emulation (the scalar path).
+  aarch64 Linux and macOS (NEON), i686 Linux (32 bits), s390x Linux
+  (big-endian, under QEMU) and `wasm32-wasip1` (under wasmtime), and was
+  run by hand on x86_64 Linux with AVX2 + FMA (a Xeon E5 v4) and on x86_64
+  macOS under emulation (the scalar path).
 
 ## Known limitations
 
@@ -356,8 +357,11 @@ What is still open in 0.1. The ones that can be closed have an issue.
 1. **The proofs are not machine-checked.** They are first-order analyses
    written in the chapters of the sources, reviewed and tested, not
    verified by a proof assistant ([#2](https://github.com/StrategicProjects/xingo-extprec/issues/2)).
-2. **Platforms not run:** big-endian targets, WebAssembly, and x86 CPUs
-   without SSE2 ([#3](https://github.com/StrategicProjects/xingo-extprec/issues/3)).
+2. **Platforms not run:** x86 CPUs without SSE2. Big-endian and
+   WebAssembly run in the CI, but neither has a SIMD backend, so they
+   check the scalar path only; s390x runs under emulation (QEMU), not on
+   hardware, and on WebAssembly the `should_panic` tests are skipped by
+   the test harness (panic = abort).
 3. **The bounds hold in the safe range** (no overflow; every `two_prod`
    product of magnitude at least `2⁻⁹⁶⁹`, or zero). Below it the
    operations stay normalized with an absolute error of order `2⁻¹⁰⁷⁴`,
