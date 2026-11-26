@@ -151,6 +151,23 @@
 //! range short of overflow, where an operand of magnitude `Ω` counts as
 //! overflow: an intermediate step of its 2Sum can overflow and step E then
 //! returns the rounded `f64` sum (measured: relative error `2⁵² u²`).
+//! *The corner* is exactly this: the first operand of the 2Sum (`x_h` of
+//! `x + y`, `a` of `from_sum(a, b)`) is `±Ω` and `x_h + y` is a tie in the
+//! top binade `[2¹⁰²³, Ω]`, rounded away from zero; the sum is then finite
+//! and the error term NaN. Operands in the safe range (`≤ 2⁴⁸⁰`) never
+//! reach it. `kernels::dot2_err` detects it and answers `β = +∞` (Chapter
+//! 11.5, the proof of C5, "Overflow"), so its bound stays true there.
+//!
+//! *Not repaired, by decision* (issue xingo-extprec#6, closed as "won't
+//! fix (cost)"). Recomputing the error term by an ordered Fast2Sum makes
+//! the corner exact and keeps the bounds (a proof and exact-rational tests
+//! were written in task I02, not merged), but no variant is free. The test as a branch of step E costs
+//! nothing in a dependent chain, but it keeps the compiler from turning
+//! step E into selects, so the loops it vectorizes on its own (the scalar
+//! `axpy` and `gemm_sub`, the naive dense kernel) lose 35–67 %. As a select
+//! on the error term it adds latency to every addition (+15–23 %). Both
+//! were measured on x86-64-v3 (task I02).
+//!
 //! Outside the safe range the other operations
 //! lose the bound — a `2Prod` that underflows contributes an absolute error
 //! of order `η` — but keep the invariants below.
