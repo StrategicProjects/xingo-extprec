@@ -290,7 +290,7 @@ impl Default for FactorBoundOptions {
 ///
 /// ```
 /// use xingo_extprec::verify::{FactorBoundOptions, forward_error_bound_lu, residual};
-/// use xingo_sparse::{CsrMatrix, Lu};
+/// use xingo_sparse::{CsrMatrix, Lu, LuFactor};
 ///
 /// // [[2, 1], [1, 3]] x = (1, 1): x* = (2/5, 1/5), not representable.
 /// let a = CsrMatrix::from_raw_parts(2, vec![0, 2, 4], vec![0, 1, 0, 1],
