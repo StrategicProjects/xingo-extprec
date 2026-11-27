@@ -12,8 +12,8 @@ license:
 repository-code: "https://github.com/StrategicProjects/xingo-extprec"
 url: "https://strategicprojects.github.io/xingo-extprec/"
 doi: 10.5281/zenodo.24354162
-version: 0.1.3
-date-released: 2026-11-19
+version: 0.2.0
+date-released: 2026-11-27
 keywords:
   - double-double arithmetic
   - extended precision

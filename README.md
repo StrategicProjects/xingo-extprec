@@ -122,7 +122,14 @@ theorem about the solution: from at most `n` transposed solves (at most
 `2n` with the default refinement; the BTRAN of the same LU) it proves that a square `A`
 is nonsingular and bounds `‖x − A⁻¹b‖∞` and every `|x_p − (A⁻¹b)_p|`,
 whatever the solve returns — a wrong one can only prevent the
-certificate.
+certificate. Algorithm E′ (`forward_error_bound_lu`, since 0.2) proves the
+same kind of bound from the triangular factors of an LU
+(`xingo_sparse::Lu::triangular_factors`) instead of `n` solves: it
+encloses the defect `P A Q − L U` entry by entry and needs one product
+`L U` and a few triangular solves. It certifies only when its contraction
+`β` is below 1, which fails for most general sparse systems of order
+≳ 200 (measured; see "Known limitations"); on `NotContracting`, fall back
+to `forward_error_bound`.
 
 ```rust
 use xingo_extprec::verify::{PolishOptions, PolishStop, norm_inf_bound, polish, residual, residual_of_dd};
@@ -240,7 +247,7 @@ worst error was 30 % of its declared bound.
 ## Features
 
 * `sparse` (default) — brings in [`xingo-sparse`](https://crates.io/crates/xingo-sparse)
-  0.4 or 0.5 (pure Rust, no dependency of its own with `default-features = false`,
+  0.6 (pure Rust, no dependency of its own with `default-features = false`,
   which is how this crate asks for it): `impl xingo_sparse::Real for
   DoubleDouble`, the dense kernel `DdDense` and the module `verify`.
 * `simd` (default) — the kernels on vector registers through
@@ -288,8 +295,9 @@ In: the error-free transformations `two_sum`, `fast_two_sum`, `two_prod`;
 conversions, 23 elementary functions and 19 constants; the compensated and
 double-double slice kernels; `Interval` with `+ − · /`, `sqrt`, `square`,
 `abs`, hull, intersection and the verified predicates; rigorous residual
-enclosures, polishing and a rigorous bound of the error of an approximate
-solution (Algorithm E) over the containers of `xingo-sparse`; the
+enclosures, polishing and rigorous bounds of the error of an approximate
+solution (Algorithm E, from transposed solves, and Algorithm E′, from the
+triangular factors of an LU) over the containers of `xingo-sparse`; the
 `DenseKernel` `DdDense`.
 
 Out, by decision: arbitrary precision; complex scalars; `f32`; a
@@ -301,7 +309,7 @@ LU, Krawczyk, verified solution sets of interval systems à la
 `verifylss`); error bounds in the 2-norm; the QD library's "sloppy"
 addition.
 
-Not in 0.1, and additive when they come: arithmetic operators with an
+Not in 0.2, and additive when they come: arithmetic operators with an
 `f64` on the left (`f64 + DoubleDouble`) and the assignment operators with
 an `f64` (`x += 1.0`) for `DoubleDouble` (`Interval` has both); `floor`,
 `ceil`, `round`, `trunc`, `signum`, `total_cmp`.
@@ -344,6 +352,15 @@ an `f64` (`x += 1.0`) for `DoubleDouble` (`Interval` has both); `floor`,
   bases of all 93 Netlib LPs; on dense test matrices it certified up to
   `κ(A) ≈ 10¹⁶` with refinement (`≈ 10¹⁴` without) — a measurement, not a
   guarantee in either direction.
+* **`forward_error_bound_lu`.** Theorem E′ was reviewed independently
+  before release (proof valid, no counterexample). About 49 000 bounds on
+  small systems were checked against exact rationals (factors of `Lu` with
+  `drop_tol`, minimal pivots and row singletons, hand-made factors with a
+  large `|L|`, adversarial factors), 796 singular matrices (none
+  certified), systems of order 50–400 and 53 Netlib KKT matrices against
+  rigorous intervals: no false bound. The reviewer's own oracles ran about
+  714 000 more calls with no failure, and the five mutations that make the
+  bound false are caught by the tests.
 * **Platforms.** The suite, with the golden bits of the elementary
   functions and the SIMD kernels compared bit for bit with the scalar
   reference, runs in the CI of the mirror on x86_64 Linux, x86_64 Windows,
@@ -354,7 +371,7 @@ an `f64` (`x += 1.0`) for `DoubleDouble` (`Interval` has both); `floor`,
 
 ## Known limitations
 
-What is still open in 0.1. The ones that can be closed have an issue.
+What is still open in 0.2. The ones that can be closed have an issue.
 
 1. **The proofs are not machine-checked.** They are first-order analyses
    written in the chapters of the sources, reviewed and tested, not
@@ -368,12 +385,27 @@ What is still open in 0.1. The ones that can be closed have an issue.
    product of magnitude at least `2⁻⁹⁶⁹`, or zero). Below it the
    operations stay normalized with an absolute error of order `2⁻¹⁰⁷⁴`,
    and the elementary functions add `η = 2⁻¹⁰⁷⁴` to their bounds. An
-   operand of magnitude `Ω` counts as overflow ([#6](https://github.com/StrategicProjects/xingo-extprec/issues/6)).
+   operand of magnitude `Ω` counts as overflow: a partial sum that reaches
+   `±Ω` makes `dot2_err` answer `β = +∞`, never a wrong bound. This will
+   not change: every correction measured costs 15–67 % on the additions or
+   the kernels ([#6](https://github.com/StrategicProjects/xingo-extprec/issues/6), closed as won't fix).
 4. **`forward_error_bound` covers one square system with point data**, in
    the ∞-norm and by component: no solution sets of interval systems, no
    2-norm bounds, no non-square systems. It needs up to `2n` transposed
    solves and is quadratic in `n` when they are dense (21 s at `n = 10⁴`),
    so it does not reach `n ≫ 10⁵` ([#4](https://github.com/StrategicProjects/xingo-extprec/issues/4)).
+   **`forward_error_bound_lu` certifies only with `β < 1`**, and `β` is
+   bounded through the comparison matrices `⟨U⟩⁻¹⟨L⟩⁻¹`, which grow
+   exponentially with the depth of the elimination (up to `10⁴⁵` at
+   `n = 400`). Measured with the factors of `xingo_sparse::Lu`: 48 % of
+   random sparse systems certified at `n = 50`, 24 % at 100, 1 % at 200,
+   0 % at 400 (Algorithm E certified all of them), and 14 of the 83 Netlib
+   KKT matrices that `Lu` factorizes. Where it certifies, the bound of an
+   `f64` solution is the true error to six digits. Its cost is that of the
+   product `L U` (the multiplications of the elimination), not linear in
+   `nnz(L) + nnz(U)`: 9.4 s on one Netlib KKT matrix (maros-r7), 13 ms on
+   another of order 16 525 (fit2p). A bound for the general large case
+   is still open ([#4](https://github.com/StrategicProjects/xingo-extprec/issues/4)).
 5. **The costs were measured on two machines**, neither of them idle; the
    kernel and factorization rows on one only ([#7](https://github.com/StrategicProjects/xingo-extprec/issues/7)).
 

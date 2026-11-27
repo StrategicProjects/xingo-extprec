@@ -5,6 +5,80 @@ All notable changes to `xingo-extprec` are recorded here. The format follows
 follows [Semantic Versioning](https://semver.org/); before 1.0, a minor
 version may change the public API.
 
+## [0.2.0] — 2026-11-27
+
+A rigorous bound of the error of a solution from the triangular factors of
+an LU, and the move to `xingo-sparse` 0.6, whose types are in this crate's
+public API (`impl xingo_sparse::Real for DoubleDouble`, the containers that
+`verify` reads): hence a new minor version.
+
+### Added
+
+* `verify::forward_error_bound_lu(a, r, &factors, &opts)` (issue
+  [#4](https://github.com/StrategicProjects/xingo-extprec/issues/4), still
+  open for the general case): Algorithm E′ and Theorem E′ of Chapter
+  11.10. From an enclosed residual `r ∋ A x − b` and triangular factors
+  `P A Q ≈ L U` (`xingo_sparse::TriangularFactors<f64>`, for instance from
+  `Lu::triangular_factors` of `xingo-sparse` 0.6), it proves that `A` is
+  nonsingular and bounds `‖x − A⁻¹b‖∞` and every `|x_p − (A⁻¹b)_p|`,
+  returning the same `ForwardErrorBound` as `forward_error_bound`
+  (`contraction = β`, `solves = 0`). The bound is a theorem whatever the
+  factors are, as long as they are triangular with valid permutations
+  (checked): the defect `L U − P A Q`, rounding and the entries `drop_tol`
+  dropped included, is enclosed entry by entry with `dot2_err`, the solves
+  with the comparison matrices `⟨L⟩`, `⟨U⟩` round upward, and a
+  first-order correction (default on) keeps the cancellations of `A⁻¹r`.
+  Cost: one product `L U` (the multiplications of the elimination), a few
+  triangular solves and two passes over `A`, instead of the `n` solves of
+  `forward_error_bound`. It panics, in release builds too, if `A` violates
+  the invariants of its container (a repeated column in a row, a NaN), as
+  its documentation states.
+* `verify::FactorBoundOptions` (`#[non_exhaustive]`, field
+  `first_order_correction`) and the variant `VerifyError::InvalidFactors`
+  (factors that fail `TriangularFactors::check_invariants`; `VerifyError`
+  was already `#[non_exhaustive]`).
+
+### Changed
+
+* The optional dependency is `xingo-sparse` 0.6 (`>=0.6.0, <0.7.0`), no
+  longer 0.4 or 0.5: `TriangularFactors` exists only since 0.6.0, and the
+  tests use the `Option` that `KktForm::expected_inertia` returns since
+  then. Without the feature `sparse` nothing changes.
+* Chapter 11.2 describes the exact shape of the overflow corner of the
+  double-double additions (an operand `±Ω` whose 2Sum is a tie in the top
+  binade), why operands in the safe range never reach it, that
+  `kernels::dot2_err` answers `β = +∞` there, and why it is not repaired:
+  every variant measured costs 35–67 % on the loops the compiler
+  vectorizes or 15–23 % of latency on every addition (issue
+  [#6](https://github.com/StrategicProjects/xingo-extprec/issues/6),
+  closed as won't fix). Documentation only; no bit changes.
+* No bit of any other result changes: `residual`, `residual_csc`,
+  `residual_of_dd`, `activity`, `polish`, `forward_error_bound`, the
+  operations, the kernels and the elementary functions are those of
+  0.1.3.
+
+Migration: depend on `xingo-sparse` 0.6 together with this version (with
+`KktForm::expected_inertia` now returning `Option<Inertia>`; see the
+`xingo-sparse` CHANGELOG). Code that does not use the feature `sparse`
+needs no change.
+
+### Known limitations
+
+`forward_error_bound_lu` certifies only when `β < 1`, and `β` is bounded
+through `⟨U⟩⁻¹⟨L⟩⁻¹`, which grows exponentially with the depth of the
+elimination for general sparse factors (up to `10⁴⁵` at `n = 400`).
+Measured with the factors of `xingo_sparse::Lu`: 48 % of random sparse
+systems certified at `n = 50`, 24 % at 100, 1 % at 200, 0 % at 400
+(Algorithm E certified all of them), and 14 of the 83 Netlib KKT matrices
+that `Lu` factorizes. Where it certifies, the bound of an `f64` solution
+matched the true error to six digits. On `NotContracting`, fall back to
+`forward_error_bound`. Its cost follows the product `L U`, not `nnz(L) +
+nnz(U)` (9.4 s on maros-r7, 13 ms on fit2p, `n = 16 525`). Theorem E′ was
+reviewed independently before release (proof valid, no counterexample);
+about 49 000 bounds against exact rationals, 796 singular matrices and
+the reviewer's 714 000 calls found no false bound. Not measured: the
+optimal LP bases of Netlib, and synthetic systems of `10⁴` to `3·10⁵`.
+
 ## [0.1.3] — 2026-11-19
 
 ### Changed
@@ -175,6 +249,7 @@ a guarantee, and its proof is the chapter's own (reviewed before release by
 an independent reviewer with 262 000 adversarial cases checked in exact
 arithmetic, no false bound found).
 
+[0.2.0]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.2.0
 [0.1.3]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.3
 [0.1.2]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.2
 [0.1.1]: https://github.com/StrategicProjects/xingo-extprec/releases/tag/v0.1.1
