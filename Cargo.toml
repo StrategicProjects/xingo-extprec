@@ -91,6 +91,13 @@ required-features = ["sparse"]
 name = "forward_error"
 required-features = ["sparse"]
 
+# The falsification tests of Algorithm E′ (Chapter 11.10, Theorem E′;
+# xingo-extprec#4) against exact rationals and rigorous brackets, with real,
+# spoiled and hand-made triangular factors.
+[[test]]
+name = "forward_error_lu"
+required-features = ["sparse"]
+
 # The measurements behind Rule P of `xingo-sparse` (Chapter 11.8) and the
 # timing harness of the kernels (L2.2b); both print Markdown tables.
 [[example]]
