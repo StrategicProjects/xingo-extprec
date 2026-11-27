@@ -969,6 +969,40 @@ fn dimensions_and_invalid_factors_are_errors() {
     ));
 }
 
+/// `A` with a column repeated in a row (its fields are public): E′0 checks
+/// the invariants of its type and panics, in release builds too (review
+/// R06, observation 1; before, such an `A` was read as the sum of the
+/// repeated entries and could be certified).
+#[test]
+#[should_panic(expected = "violates the invariants of its type")]
+fn a_column_repeated_in_a_row_is_refused() {
+    let mut rng = Rng(29);
+    let good = sparse_random(3, 0.5, 0.5, true, &mut rng);
+    let f = lu_factors(&good, LuOptions::default()).expect("nonsingular");
+    // Row 0 stores column 0 twice (0.5 + 0.5); rows 1 and 2 are the identity.
+    let a = CsrMatrix {
+        n_cols: 3,
+        row_ptr: vec![0, 2, 3, 4],
+        col_idx: vec![0, 0, 1, 2],
+        val: vec![0.5, 0.5, 1.0, 1.0],
+    };
+    let r = vec![Interval::point(0.0); 3];
+    let _ = forward_error_bound_lu(&a, &r, &f, &on());
+}
+
+/// A NaN stored in `A` is a violated invariant too: a panic.
+#[test]
+#[should_panic(expected = "violates the invariants of its type")]
+fn a_nan_in_a_is_refused() {
+    let mut rng = Rng(31);
+    let good = sparse_random(3, 0.5, 0.5, true, &mut rng);
+    let f = lu_factors(&good, LuOptions::default()).expect("nonsingular");
+    let mut a = good.csr();
+    a.val[0] = f64::NAN;
+    let r = vec![Interval::point(0.0); 3];
+    let _ = forward_error_bound_lu(&a, &r, &f, &on());
+}
+
 #[test]
 fn unbounded_or_empty_residuals() {
     let mut rng = Rng(5);

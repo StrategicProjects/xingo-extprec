@@ -90,7 +90,14 @@
 //! of [`FactorBoundOptions`] (default on). Output: a [`ForwardErrorBound`]
 //! with `contraction = β` and `solves = 0`.
 //!
-//! E′0. \[Checks.\] `A` square, `[r]` and the factors of its order, else
+//! E′0. \[Checks.\] `A` satisfies the invariants of its type
+//!      (`CsrMatrix::check_invariants`: valid pointers, column indices in
+//!      range and strictly increasing in each row, stored values finite
+//!      and nonzero), else a **panic**, in every build — the fields of
+//!      `CsrMatrix` are public too, and with a column repeated in a row
+//!      "the real matrix the stored `f64` represent" is not defined (task
+//!      I06, review R06, observation 1). `A` square, `[r]` and the factors
+//!      of its order, else
 //!      `VerifyError::Dimension`; the factors satisfy (T1) of Chapter 5.3
 //!      of `xingo-sparse` (`TriangularFactors::check_invariants`: valid
 //!      permutations, `l` strictly lower, `u` upper with its diagonal
@@ -313,7 +320,9 @@ impl Default for FactorBoundOptions {
 /// violate their invariants (T1).
 ///
 /// # Panics
-/// If `a` violates the invariants of its type.
+/// If `a` violates the invariants of its type (`CsrMatrix::check_invariants`:
+/// for instance a column repeated in a row, or a NaN stored), in release
+/// builds too: they are checked first, in `O(nnz(A))`.
 pub fn forward_error_bound_lu(
     a: &CsrMatrix<f64>,
     r: &[Interval],
@@ -321,7 +330,10 @@ pub fn forward_error_bound_lu(
     opts: &FactorBoundOptions,
 ) -> Result<ForwardErrorBound, VerifyError> {
     use ForwardErrorOutcome::{Certified, NotContracting, NotFinite};
-    // E′0.
+    // E′0. `A` first: `n_rows` reads its pointers.
+    if let Err(e) = a.check_invariants() {
+        panic!("forward_error_bound_lu: `a` violates the invariants of its type: {e}");
+    }
     dimension(a.n_rows(), a.n_cols())?;
     let n = a.n_rows();
     dimension(n, r.len())?;
