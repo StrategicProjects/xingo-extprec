@@ -526,7 +526,7 @@ pub enum VerifyError {
     },
     /// The factors given to [`forward_error_bound_lu`] violate their
     /// invariants (T1) (`xingo_sparse::TriangularFactors::check_invariants`):
-    /// the message of that check. *Provisional name (task I06).*
+    /// the message of that check.
     InvalidFactors(String),
 }
 
