@@ -152,6 +152,10 @@
 //! `|d_p| ≤ g_p + w_p ‖d‖∞` for every position `p`; the maximum over `p`
 //! gives `‖d‖∞ ≤ γ + β ‖d‖∞`, so `‖d‖∞ ≤ γ / (1 − β) ≤ ε_d` — the quotient
 //! in `Interval` (I1), with `▽(1 − β) > 0` because `β < 1` is an `f64`.
+//! If the quotient overflows, `ε_d = +∞`; then `β > 0`, some `w_p > 0`,
+//! `ε′_p = +∞` and `△(‖z‖∞ + ε_d) = +∞`, so `ε = +∞` and E′5 gives no
+//! certificate: below, `ε_d` is finite (and `△(w_p · ε_d)` never meets the
+//! convention `0 · ∞ = 0`).
 //! (vi) *The bound of `e`:* `|e_p| ≤ |z_p| + |d_p| ≤ |z_p| + g_p + w_p
 //! ε_d ≤ ε′_p` (each `△` at least its exact argument, all terms
 //! nonnegative), so `‖e‖∞ ≤ max_p ε′_p`; also `‖e‖∞ ≤ ‖z‖∞ + ‖d‖∞ ≤
@@ -184,8 +188,10 @@
 //! The enclosure of the corrected residual is `[r] − [A z]`, not
 //! `residual(A, z, b)` (which encloses `A z − b`); a non-finite `z` must
 //! be replaced (step E′3). (d) The norm bound is also `max_p ε′_p`, never
-//! larger than `‖z‖∞ + ε_d` (exactly: `|z_p| + g_p + w_p ε_d ≤ ‖z‖∞ + γ +
-//! β ε_d = ‖z‖∞ + ε_d`). (e) The cost of E′1 is not linear in `nnz(L) +
+//! larger than `‖z‖∞ + ε_d` in real arithmetic, before the roundings
+//! (`|z_p| + g_p + w_p ε_d ≤ ‖z‖∞ + γ + β ε_d = ‖z‖∞ + ε_d`); the computed
+//! `ε′_p` may pass `△(‖z‖∞ + ε_d)` by a few ulps, so E′5 takes the
+//! minimum of the two. (e) The cost of E′1 is not linear in `nnz(L) +
 //! nnz(U)` but in the number of products of the factorization, `Σ_t Σ_{k :
 //! u_kt ≠ 0} (1 + nnz(l_{:k})) + nnz(A)`; no enclosure of the defect can
 //! avoid forming every entry of `L U`.
@@ -294,6 +300,46 @@ impl Default for FactorBoundOptions {
 /// [`super::forward_error_bound`]. When `β ≥ 1` the result is
 /// [`ForwardErrorOutcome::NotContracting`], and
 /// [`super::forward_error_bound`] may still certify, at its cost.
+///
+/// # When it certifies
+/// Only when `β < 1`, and `β` is bounded through the comparison matrices
+/// `⟨U⟩⁻¹⟨L⟩⁻¹`, which grow exponentially with the depth of the
+/// elimination for general sparse factors (Chapter 11.10, "How tight, and
+/// when it fails"). **Measured** with the factors of `xingo_sparse::Lu`:
+/// random sparse systems were certified at 48 % for `n = 50`, 24 % for `n =
+/// 100`, 1 % for `n = 200` and 0 % for `n = 400` (Algorithm E certified
+/// all of them); 14 of the 83 Netlib KKT matrices that `Lu` factorizes (on
+/// `n` up to 16 525). So `β < 1` fails for most general sparse systems of
+/// order ≳ 200. Where it certifies, the bound of an `f64` solution is the
+/// true error to six digits, at a small fraction of the cost of
+/// [`super::forward_error_bound`]. **On
+/// [`ForwardErrorOutcome::NotContracting`], fall back to
+/// [`super::forward_error_bound`]:**
+///
+/// ```no_run
+/// # use xingo_extprec::Interval;
+/// # use xingo_extprec::verify::{
+/// #     FactorBoundOptions, ForwardErrorBound, ForwardErrorOptions, ForwardErrorOutcome,
+/// #     VerifyError, forward_error_bound, forward_error_bound_lu,
+/// # };
+/// # use xingo_sparse::{CsrMatrix, Lu, LuFactor, SparseVec};
+/// fn certify(a: &CsrMatrix<f64>, r: &[Interval], lu: &mut Lu<f64>)
+///     -> Result<ForwardErrorBound, VerifyError> {
+///     if let Some(f) = lu.triangular_factors() {
+///         let e = forward_error_bound_lu(a, r, &f, &FactorBoundOptions::default())?;
+///         if e.outcome != ForwardErrorOutcome::NotContracting {
+///             return Ok(e);
+///         }
+///     }
+///     // n transposed solves: the BTRAN of the same LU.
+///     let mut solve_t = |c: &mut [f64]| {
+///         let mut v = SparseVec::from_dense(c);
+///         lu.btran(&mut v);
+///         c.copy_from_slice(v.values());
+///     };
+///     forward_error_bound(a, r, &mut solve_t, &ForwardErrorOptions::default())
+/// }
+/// ```
 ///
 /// ```
 /// use xingo_extprec::verify::{FactorBoundOptions, forward_error_bound_lu, residual};
