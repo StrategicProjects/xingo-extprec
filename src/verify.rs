@@ -14,6 +14,11 @@
 //!    the enclosure of Algorithm V and `n` transposed solves (`2n` with
 //!    refinement), that a square `A` is nonsingular and bounds `‖x −
 //!    A⁻¹b‖∞` and every `|x_p − (A⁻¹b)_p|`, again a theorem (Theorem E).
+//! 4. *the same, for large systems* — Algorithm E′ (the submodule `lu`,
+//!    [`forward_error_bound_lu`]) proves the statement of Theorem E from
+//!    triangular factors `P A Q ≈ L U` and their comparison matrices, at
+//!    the cost of one product `L U` and a few triangular solves instead of
+//!    `n` solves (Theorem E′; its chapter follows this one).
 //!
 //! Algorithm E bounds the error of **one** approximate solution of **one**
 //! square system with point data. Verified *solution sets* of interval
@@ -427,11 +432,12 @@
 //! **What stays out.** Bounds in the 2-norm (by `σ_min`; rejected by the
 //! measurements of X0.3); an explicit `R`; a componentwise criterion with a
 //! vector `v ≠ 𝟙` (Perron, H-matrices: another pass of `n` solves);
-//! Krawczyk iteration; bounds through the LU factors with comparison
-//! matrices (they would need the factors of `xingo-sparse`, which are
-//! opaque); parallel rows; a bound for a subset of the components (`α` is
-//! global); interval `A` or `b`. The transposed system needs no function of
-//! its own: call again with `Aᵀ` and the FTRAN as the solve.
+//! Krawczyk iteration; parallel rows; a bound for a subset of the
+//! components (`α` is global); interval `A` or `b`. The transposed system
+//! needs no function of its own: call again with `Aᵀ` and the FTRAN as the
+//! solve. Bounds through the LU factors with comparison matrices are
+//! Algorithm E′ (the next chapter), now that `xingo-sparse` exports its
+//! factors (`Lu::triangular_factors`).
 //!
 //! ## Invariants
 //! (V1) *Residuals.* [`residual`]`(A, x, b)[i] ∋ a_iᵀx − b_i`, and likewise
@@ -500,6 +506,9 @@ use crate::eft::{two_prod, two_sum};
 use crate::interval::Interval;
 use crate::kernels;
 
+mod lu;
+pub use lu::{FactorBoundOptions, forward_error_bound_lu};
+
 /// What went wrong before any arithmetic. (`Display` and
 /// `core::error::Error` are implemented.)
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -515,6 +524,10 @@ pub enum VerifyError {
         /// What was given.
         got: usize,
     },
+    /// The factors given to [`forward_error_bound_lu`] violate their
+    /// invariants (T1) (`xingo_sparse::TriangularFactors::check_invariants`):
+    /// the message of that check. *Provisional name (task I06).*
+    InvalidFactors(String),
 }
 
 impl core::fmt::Display for VerifyError {
@@ -523,6 +536,7 @@ impl core::fmt::Display for VerifyError {
             Self::Dimension { expected, got } => {
                 write!(f, "dimension mismatch: expected {expected}, got {got}")
             }
+            Self::InvalidFactors(why) => write!(f, "invalid triangular factors: {why}"),
         }
     }
 }

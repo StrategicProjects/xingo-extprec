@@ -406,6 +406,30 @@ fn sqrt_dir(a: f64, dir: Dir) -> f64 {
     step(v, (-v).mul_add(v, x), dir) * back // N4, N5
 }
 
+/// `△(a + b)`, Algorithm N rounded up: the upper bounds of Algorithm E′
+/// (Chapter 11.10, "Algorithm E′"), which add nonnegative terms only. No
+/// NaN operand and not `+∞ + (−∞)` (N-pre).
+#[cfg(feature = "sparse")]
+#[inline]
+pub(crate) fn add_up(a: f64, b: f64) -> f64 {
+    add_dir(a, b, Dir::Up)
+}
+
+/// `△(a · b)`, Algorithm N rounded up (`0 · ∞ = 0`, step N1). No NaN
+/// operand.
+#[cfg(feature = "sparse")]
+#[inline]
+pub(crate) fn mul_up(a: f64, b: f64) -> f64 {
+    mul_dir(a, b, Dir::Up)
+}
+
+/// `△(a / b)`, Algorithm N rounded up. `b ≠ 0`, no NaN operand, not `∞ / ∞`.
+#[cfg(feature = "sparse")]
+#[inline]
+pub(crate) fn div_up(a: f64, b: f64) -> f64 {
+    div_dir(a, b, Dir::Up)
+}
+
 /// A closed interval `[lo, hi]` with `f64` endpoints, or the empty set
 /// (invariants I1–I3). Operations round outward by computed directed
 /// rounding (Chapter 11.9).
