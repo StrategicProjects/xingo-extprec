@@ -376,7 +376,7 @@ fn ldl_solves<T: Real>(n: usize, seed: u64, form: KktForm, entries: &[(usize, us
     let (num, inertia) = solver
         .factorize(&sym, &k, Regularization::none())
         .expect("factorizable");
-    assert_eq!(inertia, form.expected_inertia(n));
+    assert_eq!(Some(inertia), form.expected_inertia(n));
     let mut rng = Lcg(seed ^ 0x77);
     let b: Vec<T> = (0..n).map(|_| T::from_f64(rng.unit())).collect();
     let mut x = b.clone();

@@ -577,7 +577,7 @@ fn kkt_row(name: &str, n: usize, form: KktForm, entries: &[(usize, usize, f64)])
                 println!(
                     "| {name} | {} | {} | {} | {} | {r0:.1e} | {} | {} | {r:.1e} |",
                     p.label,
-                    if inertia == form.expected_inertia(n) {
+                    if Some(inertia) == form.expected_inertia(n) {
                         "ok"
                     } else {
                         "**wrong**"
@@ -619,7 +619,7 @@ fn kkt_defaults_row(name: &str, n: usize, form: KktForm, entries: &[(usize, usiz
             let r = norm_inf(&symmetric_residual(&k, &x, &b)).to_f64();
             println!(
                 "| {name} | defaults, `DdDense` | {} | {} | {r0:.1e} | {} | {} | {:.1e} | {r:.1e} |",
-                if inertia == form.expected_inertia(n) {
+                if Some(inertia) == form.expected_inertia(n) {
                     "ok"
                 } else {
                     "**wrong**"
