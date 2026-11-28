@@ -406,24 +406,39 @@ What is still open in 0.2. The ones that can be closed have an issue.
    `nnz(L) + nnz(U)`: 9.4 s on one Netlib KKT matrix (maros-r7), 13 ms on
    another of order 16 525 (fit2p). A bound for the general large case
    is still open ([#4](https://github.com/StrategicProjects/xingo-extprec/issues/4)).
-5. **The costs were measured on two machines**, neither of them idle; the
-   kernel and factorization rows on one only ([#7](https://github.com/StrategicProjects/xingo-extprec/issues/7)).
+5. **Costs on x86_64 were measured on a shared machine only** (the Xeon of
+   "Measured cost"), and there the solves of `DdDense` are slower than
+   those of the generic kernel; the idle figures are of an Apple M2 Pro.
 
 ## Measured cost
 
-On an Apple M2 Pro (NEON), release builds, medians recorded in the
-solver's benchmark log (on x86_64 only the elementary functions, below,
-were measured):
+Measured on 2026-11-27 with release builds of 0.2.0, on an **idle** Apple
+M2 Pro (NEON; mains power, no other build or test running, load average
+0.9–3.0 from the desktop) and on a **shared** Xeon E5-2699 v4 (AVX2 + FMA,
+Linux; load average 1.9–3.8 from other users, so its column is an order of
+magnitude). The kernels and factorizations are three rounds of
+`dd_bench` (each the median of 15 samples of about 20 ms) in two builds,
+scalar (`--no-default-features --features sparse`) and SIMD (the
+default), alternated; each cell is the median of the three rounds.
 
-| what | cost |
-|---|---|
-| `dd · dd`, `dd + dd`, `dd / dd`, `√dd` (throughput) | 1.9, 2.8, 3.4, 1.4 ns |
-| SIMD over the scalar reference: `sum2`, `dot2`, `dot`, `dot_mixed` | 1.9–2.1× faster |
-| … `axpy`, `gemm_sub`, `dot2_err` | 1.65–1.84×, 1.63–1.66×, 1.3–1.4× |
-| `dot2` (SIMD) against the naive `f64` dot product, `n ≥ 1 024` | 0.8–0.9× the time |
-| supernodal LDLᵀ factorization in double-double, `DdDense` over the generic kernel | 1.47–1.67× faster (1.00× when the factorization is simplicial; solves unchanged) |
-| double-double over `f64`: LDLᵀ factorization / solve | 6–11× / 10–16× |
-| double-double over `f64`: LU factorization / FTRAN | 1.7–1.9× / 5–8× |
+| what | M2 Pro, NEON (idle) | Xeon E5-2699 v4, AVX2 (shared) |
+|---|---|---|
+| `dd · dd`, `dd + dd`, `dd / dd`, `√dd` (throughput) | 1.8, 2.8, 3.4, 1.3 ns | 18.0, 11.9, 21.9, 13.3 ns |
+| SIMD over the scalar reference: `sum2`, `dot2`, `dot`, `dot_mixed` | 1.7–2.2× faster (4.0× for `sum2` at `n = 8`) | 2.2–8.2× faster |
+| … `axpy`, `gemm_sub`, `dot2_err` | 1.59–1.88×, 1.62–1.80×, 1.27–1.34× | 2.5–3.9×, 3.3–3.8×, 2.3–6.6× |
+| `dot2` (SIMD) against the naive `f64` dot product, `n ≥ 1 024` | 0.80–0.91× the time | 0.89–1.06× the time |
+| supernodal LDLᵀ factorization in double-double, `DdDense` over the generic kernel | 1.47–1.68× faster (1.00× when the factorization is simplicial) | 2.1–3.3× faster (0.94× simplicial) |
+| … the solves, `DdDense` over the generic kernel | 1.40–1.84× faster | 1.5–1.9× *slower* |
+| double-double over `f64`: LDLᵀ factorization / solve (`DdDense`) | 6.2–11× / 6.2–9.2× | 6.3–8.9× / 19–43× |
+| double-double over `f64`: LU factorization / FTRAN | 1.65–2.0× / 5.2–8.3× | 2.2–3.3× / 7.0–14× |
+
+The extra 2Sum that 0.1.0 added to `dot2_err` (step C5 of Chapter 11.5,
+which tests the error term of the last 2Sum for overflow) costs
+nothing measurable: against a build without it, on the M2 Pro, `dot2_err`
+took 0.96–1.03× the time at `n = 8` to `65 536` in both builds, as did
+`dot2`, which the change does not touch; the largest steady difference is
+3 % (0.5 ns per call) on the scalar build at `n = 8`. On the shared Xeon
+the control itself varied by 10–14 %, which hides it.
 
 In the Xingó solver, certifying the residuals of the optimal basis of each
 of the 93 Netlib LPs by intervals takes 0.18 % of the solve time in total
@@ -435,12 +450,15 @@ point to three digits — and, for the polished solution, `ε̂` equal to its
 own true error to three digits as well (it was up to `7.7 · 10⁴` times
 larger in 0.1.2; [#5](https://github.com/StrategicProjects/xingo-extprec/issues/5)).
 
-An elementary function takes 190–760 ns per call on the M2 Pro (`exp` 233,
-`ln` 427, `sin` 344, `atan` 196, `powf` 758) and 310–1 030 ns on a Xeon
-E5-2699 v4 with AVX2 (`exp` 361, `ln` 595, `sin` 596, `atan` 312, `powf`
-1 033); three runs on each machine. `sin_cos` shares the reduction, not the
-kernels. The example `elementary_bench` (`cargo run --release --example
-elementary_bench`, no feature needed) prints the same rows on any machine.
+An elementary function takes 190–730 ns per call on the idle M2 Pro
+(`exp` 226, `ln` 416, `sin` 333, `atan` 189, `powf` 731) and 345–1 125 ns
+on the shared Xeon (`exp` 425, `ln` 637, `sin` 595, `atan` 345, `powf`
+1 125); three runs of `elementary_bench` on each machine, the median of
+the three. `sin_cos` shares the reduction, not the kernels. The example
+`elementary_bench` (`cargo run --release --example elementary_bench`, no
+feature needed) prints the same rows on any machine, and `dd_bench`
+(`cargo run --release --example dd_bench -- <k8|k64|k1024|k65536|lu|ldl>`,
+feature `sparse`) the kernel and factorization rows.
 
 `polish` stops on a per-row test `|r_i| ≤ τ (Σ_j |a_ij x_j| + |b_i|)`; on
 bases with degenerate rows it often ends `Stagnated`, which is harmless (9

@@ -5,6 +5,20 @@ All notable changes to `xingo-extprec` are recorded here. The format follows
 follows [Semantic Versioning](https://semver.org/); before 1.0, a minor
 version may change the public API.
 
+## [Unreleased]
+
+### Documentation
+
+* "Measured cost" in the README, the page and the "Cost" section of
+  Chapter 11.11 measured again (issue
+  [#7](https://github.com/StrategicProjects/xingo-extprec/issues/7)): an
+  idle Apple M2 Pro, and the kernel and factorization rows on x86_64 with
+  AVX2 (a shared Xeon E5-2699 v4) for the first time, three rounds of
+  `dd_bench` and `elementary_bench` each. On that Xeon the solves of
+  `DdDense` take 1.5–1.9× the time of the generic kernel's (recorded as a
+  limitation). The extra 2Sum of `dot2_err` (0.1.0) costs nothing
+  measurable (within 3 % of a build without it). No code changes.
+
 ## [0.2.0] — 2026-11-27
 
 A rigorous bound of the error of a solution from the triangular factors of

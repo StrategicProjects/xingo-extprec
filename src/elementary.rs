@@ -735,18 +735,17 @@
 //! their tiny argument.
 //!
 //! ## Cost
-//! The numbers below were measured by a harness outside the tree; the
-//! example `elementary_bench` has its rows and its method, and prints the
-//! table with the backend, the target and the load average. Time per call (ns,
-//! median of 21 runs over 1 024 independent arguments,
-//! so a throughput; release, Apple M2 Pro on AC power, load average 3.0
-//! from other sessions): `exp` 232, `exp2` 214, `exp_m1` 241, `ln` 430,
-//! `ln_1p` 443, `log2` 439, `log10` 443, `powi(x, 7)` 53, `powi(x, −100)`
-//! 138, `powf` 753, `sin` 279 (`|x| ≤ 1`) to 344 (`|x| ≤ 10`) and 352
-//! (`|x|` up to `2⁹⁶⁰`), `cos` 340, `tan` 599, `sin_cos` 599, `atan` 190,
-//! `atan2` 258, `asin` 266, `acos` 266, `sinh` 298, `cosh` 271, `tanh` 278,
-//! `asinh` 538, `acosh` 508, `atanh` 487. For scale: `dd · dd` 1.9, `dd +
-//! dd` 2.8, `dd / dd` 3.4, `f64::exp` 2.5.
+//! Measured by the example `elementary_bench`, which prints the table
+//! with the backend, the target and the load average. Time per call (ns,
+//! median of 21 rounds over 1 024 independent arguments, so a throughput;
+//! the median of three runs; release, an idle Apple M2 Pro on AC power,
+//! 2026-11-27): `exp` 226, `exp2` 206, `exp_m1` 234, `ln` 416, `ln_1p`
+//! 431, `log2` 425, `log10` 429, `powi(x, 7)` 51, `powi(x, −100)` 134,
+//! `powf` 731, `sin` 270 (`|x| ≤ 1`) to 333 (`|x| ≤ 10`) and 341 (`|x|` up
+//! to `2⁹⁶⁰`), `cos` 329, `tan` 585, `sin_cos` 564, `atan` 189, `atan2`
+//! 250, `asin` 258, `acos` 259, `sinh` 289, `cosh` 262, `tanh` 269,
+//! `asinh` 489, `acosh` 455, `atanh` 474. For scale: `dd · dd` 1.8, `dd +
+//! dd` 2.8, `dd / dd` 3.4, `f64::exp` 2.9.
 //!
 //! ## The declared bounds
 //! The column "proven" is the constant of the proof in this chapter,
