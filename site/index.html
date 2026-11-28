@@ -313,7 +313,7 @@ test result: <span class="c-ok">ok</span></code></pre>
         </div>
         <div class="viz">
           <h3>Operations: bound and worst observed error</h3>
-          <p class="cap">Relative error in units of <code>u²</code>; the worst of 20 000 samples against exact rationals.</p>
+          <p class="cap">Relative error in units of <code>u²</code>; the worst of 20 000 samples against exact rationals. The bounds of <code>dd²</code> and <code>dd · f64</code> are machine-checked in binary64 on the safe range, the latter as 2(1 + 2⁻³⁷), slightly above the 2 of the table (closing it is in progress; <a href="https://github.com/StrategicProjects/xingo-extprec/tree/main/proofs">proofs/</a>).</p>
           <div class="scroll">
             <table class="cmp">
               <thead><tr><th>Operation</th><th>Algorithm</th><th class="num">Bound</th><th class="num">Observed</th></tr></thead>
@@ -432,7 +432,7 @@ assert!(e.<span class="c-cmd">is_certified</span>());   <span class="c-cmt">// �
       <div class="card scroll">
         <table class="cmp">
           <tbody>
-            <tr><td>The proofs are written and reviewed, not checked by a proof assistant (<a href="https://github.com/StrategicProjects/xingo-extprec/issues/2">#2</a>).</td></tr>
+            <tr><td>Most proofs are written and reviewed, not checked by a proof assistant (<a href="https://github.com/StrategicProjects/xingo-extprec/issues/2">#2</a>); the exceptions, in <a href="https://github.com/StrategicProjects/xingo-extprec/tree/main/proofs">proofs/</a>, are the bounds of <code>dd²</code> and <code>dd · f64</code> (the latter as 2u²(1 + 2⁻³⁷)) and the bound β of <code>dot2_err</code>.</td></tr>
             <tr><td>Big-endian and WebAssembly run in CI on the scalar path only (no SIMD backend there), s390x under emulation rather than on hardware; x86 CPUs without SSE2 were not run.</td></tr>
             <tr><td>The bounds hold in the "safe range" (no overflow; every exact product at least 2⁻⁹⁶⁹ in magnitude, or zero); below it there is an added absolute error of order 2⁻¹⁰⁷⁴. An operand of the largest magnitude counts as overflow (<code>dot2_err</code> then answers β = +∞); every correction measured costs 15–67 %, so it stays (<a href="https://github.com/StrategicProjects/xingo-extprec/issues/6">#6</a>, closed as won't fix).</td></tr>
             <tr><td><code>forward_error_bound</code> covers one square system with point data, in the ∞-norm. It needs up to <code>2n</code> solves and is quadratic in <code>n</code> when they are dense (21 s at n = 10⁴), so it does not reach n ≫ 10⁵ (<a href="https://github.com/StrategicProjects/xingo-extprec/issues/4">#4</a>).</td></tr>

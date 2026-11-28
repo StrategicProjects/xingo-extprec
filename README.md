@@ -211,9 +211,9 @@ arithmetic.
 |---|---|---|---|
 | `dd + f64` | DWPlusFP | `2u²/(1 − 2u)` | Joldes, Muller & Popescu 2017 |
 | `dd + dd` | AccurateDWPlusDW | `3u²/(1 − 4u)` | Joldes, Muller & Popescu 2017 |
-| `dd · f64` | DWTimesFP3 | `2u²` | Joldes, Muller & Popescu 2017 |
+| `dd · f64` | DWTimesFP3 | `2u²` | Joldes, Muller & Popescu 2017 (machine-checked here: `2u²(1 + 2⁻³⁷)`) |
 | `dd · dd` | DWTimesDW3 | `4u²` | Muller & Rideau 2022 (Coq) |
-| `dd²` | DWPow2 | `3u²` | Hubrecht & Melquiond 2026 (Gappa, binary64) |
+| `dd²` | DWPow2 | `3u²` | Hubrecht & Melquiond 2026 (Gappa, binary64); machine-checked here on the safe range |
 | `dd / f64` | DWDivFP3 | `3u²` | Joldes, Muller & Popescu 2017 |
 | `dd / dd` | DWDivDW2 | `15u² + 56u³` | Joldes, Muller & Popescu 2017 |
 | `√dd` | SQRTDWtoDW | `25/8 u²` | Lefèvre, Louvet, Muller, Picot & Rideau 2023 |
@@ -373,9 +373,18 @@ an `f64` (`x += 1.0`) for `DoubleDouble` (`Interval` has both); `floor`,
 
 What is still open in 0.2. The ones that can be closed have an issue.
 
-1. **The proofs are not machine-checked.** They are first-order analyses
+1. **Most proofs are not machine-checked.** They are first-order analyses
    written in the chapters of the sources, reviewed and tested, not
    verified by a proof assistant ([#2](https://github.com/StrategicProjects/xingo-extprec/issues/2)).
+   The exceptions are in the repository's
+   [`proofs/`](https://github.com/StrategicProjects/xingo-extprec/tree/main/proofs)
+   (not in the package), checked by Rocq with Flocq and Gappa: the
+   bound `3u²` of `dd²` and the bound of `dd · f64` in binary64 on the
+   safe range, and the evaluation of `β` in `dot2_err` (step C5). For
+   `dd · f64` the machine-checked constant is `2u²(1 + 2⁻³⁷)`, slightly
+   above the `2u²` of the table; closing the exact value is in progress.
+   The proofs are about the algorithms as transcribed there; the
+   correspondence with the code is by review and by the exact tests.
 2. **Platforms not run:** x86 CPUs without SSE2. Big-endian and
    WebAssembly run in the CI, but neither has a SIMD backend, so they
    check the scalar path only; s390x runs under emulation (QEMU), not on

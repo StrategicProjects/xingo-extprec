@@ -9,6 +9,19 @@ version may change the public API.
 
 ### Documentation
 
+* Machine-checked proofs (issue
+  [#2](https://github.com/StrategicProjects/xingo-extprec/issues/2)):
+  the directory `proofs/` of the repository (not in the package) holds
+  Rocq + Flocq proofs, with Gappa certificates, of the bound `3u²` of
+  `dd²` and of `2u²(1 + 2⁻³⁷)` for `dd · f64` in binary64 on the safe
+  range, and of the evaluation of `β` in step C5 of `dot2_err`, rechecked
+  by `proofs/check.sh` and a CI job of its own. `ERROR_BOUNDS` is
+  unchanged: the `2u²` of `dd · f64` stays the literature's value, and
+  the README and Chapter 11.2 say that the machine-checked constant is
+  slightly larger. Chapter 11.2 now says that the FMA of step 2 of `dd²`
+  and `dd · f64` can underflow in the safe range (the bounds hold all the
+  same). No code changes.
+
 * "Measured cost" in the README, the page and the "Cost" section of
   Chapter 11.11 measured again (issue
   [#7](https://github.com/StrategicProjects/xingo-extprec/issues/7)): an
