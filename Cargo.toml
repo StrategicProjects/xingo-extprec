@@ -22,7 +22,10 @@ categories = ["mathematics", "science", "algorithms"]
 # licenses. The proptest regression seeds are development state (replayed
 # by `cargo test` from a checkout, meaningless to a user of the crate); the
 # workflows are the mirror's CI and Pages; site/ is the mirror's landing page.
-exclude = ["tests/*.proptest-regressions", ".github/", "site/", ".zenodo.json"]
+# proofs/ holds the machine-checked proofs (Gappa and Rocq scripts, checked
+# by proofs/check.sh): verification material for the mirror, not part of the
+# crate; the tools it needs are not dependencies (task V03).
+exclude = ["tests/*.proptest-regressions", ".github/", "site/", ".zenodo.json", "proofs/"]
 
 # docs.rs builds with every feature so that `verify` and `DdDense` (feature
 # `sparse`) appear, and with the private items so that every chapter does:
