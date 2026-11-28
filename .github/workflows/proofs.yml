@@ -1,0 +1,100 @@
+# Recheck of the machine-checked proofs in proofs/ (D-0173; proofs/README.md):
+# Gappa writes the certificates, Rocq checks them and the hand-written Rocq
+# files, every mutant must be rejected and every counterexample must refute
+# its mutant. The tools are verification tools only, not dependencies of the
+# crate. A job of its own, separate from CI: it runs when the proofs or the
+# code they transcribe change, weekly, and on demand.
+name: Proofs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "proofs/**"
+      - "src/dd.rs"
+      - "src/eft.rs"
+      - "src/kernels.rs"
+      - ".github/workflows/proofs.yml"
+  pull_request:
+    paths:
+      - "proofs/**"
+      - "src/dd.rs"
+      - "src/eft.rs"
+      - "src/kernels.rs"
+      - ".github/workflows/proofs.yml"
+  schedule:
+    - cron: "17 5 * * 1" # Mondays, 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Pinned versions: change them together with the cache key below.
+env:
+  OCAML_VERSION: 5.2.1
+  ROCQ_VERSION: 9.2.0
+  FLOCQ_VERSION: 4.2.2
+  COQ_GAPPA_VERSION: 1.11.0
+  GAPPA_VERSION: 1.8.3
+  GAPPA_SHA256: 9b3e14e95a5b6aa0ee909b1d1e5c1fac04042024f29b66377cfb9e1923b25f5c
+  OPAMROOT: /home/runner/.opam
+  OPAMYES: "1"
+  OPAMCONFIRMLEVEL: unsafe-yes
+
+jobs:
+  proofs:
+    name: Gappa + Rocq recheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      # Python >= 3.13 for math.fma (the exact counterexamples of
+      # proofs/mutants/counterexamples.py); check.sh skips that step without it.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # opam itself, and the C/C++ libraries Gappa is built against.
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam libgmp-dev libmpfr-dev libboost-dev
+      # The whole opam root (about 750 MB): the switch with OCaml, Rocq,
+      # Flocq, the Gappa support library and Gappa. A miss rebuilds it
+      # (about 10-15 min); a hit takes 1-2 min to restore.
+      - name: Cache opam root
+        id: cache-opam
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.opam
+          key: proofs-opam-ubuntu-24.04-ocaml${{ env.OCAML_VERSION }}-rocq${{ env.ROCQ_VERSION }}-flocq${{ env.FLOCQ_VERSION }}-coqgappa${{ env.COQ_GAPPA_VERSION }}-gappa${{ env.GAPPA_VERSION }}-v1
+      # The macOS workaround of proofs/README.md (OCaml configured without
+      # pipe2/dup3) is not needed on Linux, where glibc provides both.
+      - name: Build the tools (cache miss only)
+        if: steps.cache-opam.outputs.cache-hit != 'true'
+        run: |
+          opam init --bare --disable-sandboxing --no-setup
+          opam switch create xingo-proofs "ocaml-base-compiler.$OCAML_VERSION" -j 4
+          opam repo add --switch=xingo-proofs rocq-released https://rocq-prover.org/opam/released
+          opam install --switch=xingo-proofs -j 4 \
+            "rocq-core.$ROCQ_VERSION" "rocq-stdlib.$ROCQ_VERSION" \
+            "coq-flocq.$FLOCQ_VERSION" "coq-gappa.$COQ_GAPPA_VERSION"
+          # Gappa: the opam package stops at 1.6.0; build the release
+          # tarball, checked by its SHA-256, into the switch.
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o gappa.tar.gz "https://gappa.gitlabpages.inria.fr/releases/gappa-$GAPPA_VERSION.tar.gz"
+          echo "$GAPPA_SHA256  gappa.tar.gz" | sha256sum -c -
+          tar xzf gappa.tar.gz
+          cd "gappa-$GAPPA_VERSION"
+          ./configure --prefix="$(opam var --switch=xingo-proofs prefix)"
+          ./remake -j4
+          ./remake install
+      - name: Versions
+        run: |
+          opam exec --switch=xingo-proofs -- gappa --version
+          opam exec --switch=xingo-proofs -- rocq --version
+          opam list --switch=xingo-proofs --installed rocq-core coq-flocq coq-gappa
+          python3 --version
+      - name: Recheck the proofs (proofs/check.sh)
+        run: sh proofs/check.sh
+        env:
+          XINGO_PROOFS_SWITCH: xingo-proofs

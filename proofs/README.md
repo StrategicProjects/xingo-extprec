@@ -21,6 +21,11 @@ statements in exact rational arithmetic. It exits with a non-zero status if a
 proof fails, a mutant is accepted or a counterexample does not refute its
 mutant. Scratch files go to `proofs/_build/` (git-ignored).
 
+In the mirror, the workflow `.github/workflows/proofs.yml` runs the same
+script in a job of its own (Ubuntu 24.04, pinned tool versions, the opam
+root cached): on pushes and pull requests that touch `proofs/`,
+`src/dd.rs`, `src/eft.rs` or `src/kernels.rs`, weekly, and on demand.
+
 Tools: Gappa 1.8.3, Rocq 9.2.0, Flocq 4.2.2, the Gappa support library for
 Rocq (`coq-gappa`) 1.11.0, and Python >= 3.13 (`math.fma`) for the
 counterexamples (that step is skipped without it). `check.sh` uses `gappa` and
